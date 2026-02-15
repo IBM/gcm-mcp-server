@@ -4,6 +4,8 @@ Model Context Protocol (MCP) server for IBM Guardium Cryptography Manager (GCM) 
 
 Ask your AI assistant to list cryptographic assets, manage TDE keys, run discovery scans, check policy compliance — all without writing API calls or navigating the GCM console.
 
+![GCM MCP Server: Bridging AI Assistants and IBM Guardium](GCM%20MCP.png)
+
 ---
 
 ## What You Can Do
