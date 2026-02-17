@@ -23,7 +23,6 @@ dist/
 *.egg-info/
 
 # IDEs
-.vscode/
 .idea/
 *.swp
 *.swo

@@ -1,0 +1,47 @@
+{
+  // GCM MCP Server configurations for VS Code
+  // See: https://code.visualstudio.com/docs/copilot/chat/mcp-servers
+  "inputs": [
+    {
+      "id": "gcm-host",
+      "type": "promptString",
+      "description": "GCM host (e.g., 9.30.252.230)",
+      "default": "9.30.252.230"
+    },
+    {
+      "id": "gcm-username",
+      "type": "promptString",
+      "description": "GCM username (e.g., gcmadmin@gcm.local)",
+      "default": "gcmadmin@gcm.local"
+    },
+    {
+      "id": "gcm-password",
+      "type": "promptString",
+      "description": "GCM password",
+      "password": true
+    }
+  ],
+  "servers": {
+    // ── Local stdio transport (runs MCP server as a child process) ──
+    "gcm-mcp-local": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "src.server", "--transport", "stdio"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "GCM_HOST": "${input:gcm-host}",
+        "GCM_USERNAME": "${input:gcm-username}",
+        "GCM_PASSWORD": "${input:gcm-password}",
+        "GCM_CLIENT_ID": "gcmclient",
+        "GCM_VERIFY_SSL": "false",
+        "GCM_LOG_LEVEL": "INFO"
+      }
+    },
+    // ── Remote SSE transport (connects to appserver container) ──
+    "gcm-mcp-remote": {
+      "type": "sse",
+      "url": "http://9.30.147.112:8002/sse",
+      "headers": {}
+    }
+  }
+}
