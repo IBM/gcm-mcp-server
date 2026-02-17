@@ -55,8 +55,8 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 # Import MCP server internals
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from src.server import call_tool, list_tools, GCM_API_SCHEMA, state
+from src.tools import call_tool, list_tools, state
+from src.discovery import GCM_API_SCHEMA
 
 # ==================== Configuration ====================
 
