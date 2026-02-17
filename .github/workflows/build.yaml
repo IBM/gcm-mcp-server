@@ -2,7 +2,7 @@ name: Build and Push Multi-Arch Container
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, ibm-release ]
   workflow_dispatch:
 
 jobs:

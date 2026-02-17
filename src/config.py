@@ -8,6 +8,9 @@ All other modules import from here instead of reading os.environ directly.
 import os
 import logging
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # ==================== GCM Server ====================
 
 GCM_HOST = os.environ.get('GCM_HOST', 'localhost')
