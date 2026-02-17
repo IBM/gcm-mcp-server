@@ -34,3 +34,6 @@ dist/
 
 # Logs
 *.log
+
+# Workspace config (local settings)
+workspace_config.yaml
