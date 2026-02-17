@@ -3,7 +3,7 @@
   // Container: ghcr.io/ibm/gcm-mcp-server:latest on appserver1 (9.30.147.112)
   // Health: http://9.30.147.112:8002/health
   "servers": {
-    "gcm-mcp": {
+    "GCM-MCP": {
       "type": "sse",
       "url": "http://9.30.147.112:8002/sse"
     }
