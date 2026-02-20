@@ -34,57 +34,8 @@ The GCM MCP Server now requires API key authentication for all client connection
 
 **What you need to do:**
 
-1. **Get an API key from the server admin.** They will generate one for you and send it securely.
-2. **Add the key to your MCP client config:**
+1. **Get an API key from the server admin.**
+2. **Follow [Part B: Client Setup](SETUP_GUIDE.md#part-b-client-setup-each-user)** in the Setup Guide — it has step-by-step config for VS Code, Claude Desktop, and IBM Bob.
+3. **Reload your AI assistant and test.**
 
-   **VS Code** — edit `.vscode/mcp.json`:
-   ```json
-   {
-     "servers": {
-       "gcm-mcp-server": {
-         "type": "sse",
-         "url": "http://<mcp-server-host>:8002/sse",
-         "headers": {
-           "Authorization": "Bearer <your-api-key>"
-         }
-       }
-     }
-   }
-   ```
-
-   **Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
-   ```json
-   {
-     "mcpServers": {
-       "gcm-mcp-server": {
-         "command": "npx",
-         "args": [
-           "mcp-remote",
-           "http://<mcp-server-host>:8002/sse",
-           "--header",
-           "Authorization: Bearer <your-api-key>"
-         ]
-       }
-     }
-   }
-   ```
-
-   **IBM Bob** — edit `~/Library/Application Support/IBM Bob/User/globalStorage/ibm.bob-code/settings/mcp_settings.json`:
-   ```json
-   {
-     "mcpServers": {
-       "gcm-mcp-server": {
-         "type": "sse",
-         "url": "http://<mcp-server-host>:8002/sse",
-         "headers": {
-           "Authorization": "Bearer <your-api-key>"
-         }
-       }
-     }
-   }
-   ```
-
-3. **Reload / restart your AI assistant.**
-4. **Test:** Ask *"Use gcm_discover to list all available GCM services."* You should see 11 services.
-
-**That's it.** Everything else (GCM login, token refresh, API routing) works exactly as before. The only change on your side is adding the `Authorization` header.
+Everything else (GCM login, token refresh, API routing) works exactly as before. The only change on your side is adding the `Authorization` header.
