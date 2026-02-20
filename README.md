@@ -267,7 +267,7 @@ echo $GCM_MCP_API_KEY   # Save this — you'll need it for client config
 
 Then add the same key to your AI assistant's MCP config (see [Connecting Your AI Assistant](#connecting-your-ai-assistant)).
 
-> **`GCM_MCP_API_KEY` is mandatory on all transports.** The MCP server **refuses to start** without this variable set, regardless of transport mode. For SSE/REST it is a real network secret. For stdio it is a compliance gate — the server will not run unless explicitly configured.
+> **`GCM_MCP_API_KEY` is mandatory for network transports (SSE/REST).** The server **refuses to start** in SSE or REST mode without this key. It prevents unauthorized clients from using the deployed server as a proxy to GCM using the admin's credentials. stdio is exempt — the user runs the process locally with their own GCM credentials; GCM Keycloak (Layer 2) is the security gate.
 
 ---
 
@@ -373,11 +373,11 @@ The MCP server requires **two sets of credentials**, both set as environment var
 | `GCM_AUTH_MODE` | No | `oauth2` | Authentication mode |
 | `GCM_VERIFY_SSL` | No | `false` | SSL certificate verification |
 | `GCM_REQUEST_TIMEOUT` | No | `30` | API timeout in seconds |
-| `GCM_MCP_API_KEY` | **Yes** | — | API key for client authentication. Mandatory on all transports (SSE, REST, stdio). |
+| `GCM_MCP_API_KEY` | **Yes*** | — | API key for client auth. Required for SSE/REST (network). Not needed for stdio (local). |
 
 You can set these as environment variables or in a `.env` file alongside the server.
 
-> **Security:** `GCM_MCP_API_KEY` is **mandatory on all transports**. The server exits with a fatal error if not set.
+> **\*** `GCM_MCP_API_KEY` is **mandatory for SSE and REST** (server exits with fatal error if not set). Not enforced for stdio because the user runs locally with their own GCM credentials — Keycloak (Layer 2) authenticates them directly.
 
 ---
 
