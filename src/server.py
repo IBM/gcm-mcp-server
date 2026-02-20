@@ -18,6 +18,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src import config
+from src import keystore
 from src.discovery import get_service_names
 from src.tools import (
     list_tools, call_tool,
@@ -58,11 +59,10 @@ async def _async_main_stdio():
 # ==================== API Key Middleware ====================
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
-    """Validates API key in Authorization header for SSE transport.
+    """Validates API key from the key store in Authorization header.
 
     Every request must include: Authorization: Bearer <key>
-    The /health endpoint is always accessible without auth.
-    The server refuses to start without GCM_MCP_API_KEY set.
+    The /health and /admin/* endpoints are handled separately.
     """
 
     async def dispatch(self, request, call_next):
@@ -70,11 +70,16 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/health":
             return await call_next(request)
 
-        # Validate API key
+        # Admin endpoints use localhost check, not API key
+        if request.url.path.startswith("/admin"):
+            return await call_next(request)
+
+        # Validate API key against key store
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.removeprefix("Bearer ").strip()
 
-        if token != config.GCM_MCP_API_KEY:
+        key_info = keystore.validate_key(token)
+        if key_info is None:
             logger.warning(f"Unauthorized request from {request.client.host} to {request.url.path}")
             return JSONResponse(
                 {"error": "Unauthorized", "message": "Invalid or missing API key"},
@@ -104,12 +109,49 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
             "server": "GCM MCP Server",
             "version": "1.0.0",
             "transport": "sse",
-            "auth_required": config.GCM_MCP_API_KEY is not None,
+            "auth_required": True,
+            "active_keys": len(keystore.list_keys()),
             "services": get_service_names(),
         })
 
+    # ---- Admin endpoints (localhost only) ----
+
+    def _is_localhost(request) -> bool:
+        """Check if request originates from localhost."""
+        client_host = request.client.host if request.client else None
+        return client_host in ("127.0.0.1", "::1", "localhost")
+
+    async def admin_create_key(request):
+        if not _is_localhost(request):
+            return JSONResponse({"error": "Forbidden", "message": "Admin endpoints are localhost only"}, status_code=403)
+        try:
+            body = await request.json()
+            user = body.get("user", "").strip()
+        except Exception:
+            user = ""
+        if not user:
+            return JSONResponse({"error": "Bad Request", "message": "'user' field is required"}, status_code=400)
+        result = keystore.generate_key(user)
+        return JSONResponse(result, status_code=201)
+
+    async def admin_list_keys(request):
+        if not _is_localhost(request):
+            return JSONResponse({"error": "Forbidden", "message": "Admin endpoints are localhost only"}, status_code=403)
+        return JSONResponse(keystore.list_keys())
+
+    async def admin_revoke_key(request):
+        if not _is_localhost(request):
+            return JSONResponse({"error": "Forbidden", "message": "Admin endpoints are localhost only"}, status_code=403)
+        key_prefix = request.path_params["key_prefix"]
+        result = keystore.revoke_key(key_prefix)
+        if result is None:
+            return JSONResponse({"error": "Not Found", "message": f"No key with prefix '{key_prefix}'"}, status_code=404)
+        return JSONResponse(result)
+
     middleware = [Middleware(APIKeyMiddleware)]
     logger.info("API key authentication enforced for all SSE connections")
+    logger.info(f"Key store: {keystore.KEY_STORE_PATH}")
+    logger.info(f"Active keys: {len(keystore.list_keys())}")
 
     return Starlette(
         debug=False,
@@ -117,6 +159,9 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
             Route("/health", health),
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=sse.handle_post_message),
+            Route("/admin/keys", admin_create_key, methods=["POST"]),
+            Route("/admin/keys", admin_list_keys, methods=["GET"]),
+            Route("/admin/keys/{key_prefix}", admin_revoke_key, methods=["DELETE"]),
         ],
         middleware=middleware,
     )
@@ -143,7 +188,6 @@ def main():
 
     if args.transport == "sse":
         import uvicorn
-        config.require_api_key("sse")
         logger.info(f"Starting GCM MCP Server (SSE mode) on {args.host}:{args.port}")
         logger.info(f"Connect via: http://{args.host}:{args.port}/sse")
         logger.info("Tools: gcm_auth, gcm_api, gcm_discover")

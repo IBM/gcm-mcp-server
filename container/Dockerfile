@@ -12,5 +12,8 @@ COPY src/ src/
 # Expose HTTP port
 EXPOSE 8002
 
+# Persistent volume for API key store
+VOLUME /data
+
 # Default: run HTTP transport on port 8002
 CMD ["python", "-m", "src.server", "--transport", "sse", "--host", "0.0.0.0", "--port", "8002"]

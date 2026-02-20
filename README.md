@@ -79,9 +79,8 @@ Before setting up the MCP server, you need the following:
 | 1 | **GCM 2.0 server** (running and accessible) | Deployed on a VM/server with K3s |
 | 2 | **GCM login credentials** (`GCM_USERNAME` / `GCM_PASSWORD`) | Your GCM admin account (e.g., `gcmadmin@gcm.local`) |
 | 3 | **OIDC client credentials** (`GCM_CLIENT_ID` / `GCM_CLIENT_SECRET`) | Extract from K8s secret on the GCM server (see below) |
-| 4 | **MCP API Key** (`GCM_MCP_API_KEY`) | Generate locally (see below) |
-| 5 | **Docker** (for container deployment) or **Python 3.10+** (for source) | [docker.com](https://docs.docker.com/get-docker/) or [python.org](https://www.python.org/downloads/) |
-| 6 | **An MCP-compatible AI assistant** | VS Code (Copilot), Claude Desktop, IBM Bob, or Cursor |
+| 4 | **Docker** (for container deployment) or **Python 3.10+** (for source) | [docker.com](https://docs.docker.com/get-docker/) or [python.org](https://www.python.org/downloads/) |
+| 5 | **An MCP-compatible AI assistant** | VS Code (Copilot), Claude Desktop, IBM Bob, or Cursor |
 
 ### Step 1: Get the OIDC Client Credentials from GCM
 
@@ -98,17 +97,6 @@ kubectl get secret oidc-client-secret -n gcmapp \
   -o jsonpath='{.data.CLIENT_SECRET}' | base64 -d && echo
 ```
 
-### Step 2: Generate an MCP API Key
-
-```bash
-# Generate a secure 64-character hex key
-export GCM_MCP_API_KEY=$(openssl rand -hex 32)
-echo "Your MCP API Key: $GCM_MCP_API_KEY"
-# Save this — you'll need it for both the server and client config
-```
-
-> **Why an API key?** Without it, anyone who can reach the MCP server's port can control GCM through it. The API key ensures only authorized AI assistants can connect. See [Security](#security) for details.
-
 ---
 
 ## Getting Started
@@ -122,12 +110,12 @@ docker run -d \
   --name gcm-mcp-server \
   --restart unless-stopped \
   -p 8002:8002 \
+  -v gcm-mcp-data:/data \
   -e GCM_HOST="<gcm-server-ip>" \
   -e GCM_USERNAME="<your-gcm-username>" \
   -e GCM_PASSWORD="<your-gcm-password>" \
   -e GCM_CLIENT_ID="gcmclient" \
   -e GCM_CLIENT_SECRET="<from-step-1>" \
-  -e GCM_MCP_API_KEY="<from-step-2>" \
   ghcr.io/ibm/gcm-mcp-server:latest
 ```
 
@@ -136,6 +124,29 @@ Verify it's running:
 ```bash
 curl http://localhost:8002/health
 ```
+
+### Step 2: Generate an API Key
+
+API keys are generated from the server itself (localhost only). SSH into the server and run:
+
+```bash
+# Generate a key for a user
+curl -s -X POST http://localhost:8002/admin/keys \
+  -H "Content-Type: application/json" \
+  -d '{"user": "bob@company.com"}' | jq .
+
+# Response (key shown ONCE — copy it now):
+# {
+#   "key": "a3f8e9b1...",
+#   "user": "bob@company.com",
+#   "created": "2026-02-20T14:30:00Z",
+#   "key_prefix": "a3f8e9b1"
+# }
+```
+
+Send the key to the user securely. They’ll need it for their AI assistant config.
+
+> **Admin operations are localhost-only.** You must be on the server (SSH) to manage keys. See [Security](#security) for details.
 
 The image supports both `linux/amd64` and `linux/arm64`.
 
@@ -150,9 +161,16 @@ export GCM_HOST=<gcm-server-ip>
 export GCM_USERNAME=<your-gcm-username>
 export GCM_PASSWORD=<your-gcm-password>
 export GCM_CLIENT_SECRET=<from-step-1>
-export GCM_MCP_API_KEY=<from-step-2>
 
 python -m src.server
+```
+
+Generate API keys after starting:
+
+```bash
+curl -s -X POST http://localhost:8002/admin/keys \
+  -H "Content-Type: application/json" \
+  -d '{"user": "bob@company.com"}'
 ```
 
 ---
@@ -223,7 +241,7 @@ After restarting your AI assistant, try:
 
 You should see 11 services: usermanagement, tde, assetinventory, discovery, policy, policyrisk, audit, integration, notifications, clm, config.
 
-> **Note:** GCM credentials are configured on the server side. Your AI assistant config needs the server URL **and the MCP API key** — no GCM passwords in the client config.
+> **Note:** GCM credentials are configured on the server side. Your AI assistant config needs the server URL **and an API key from the admin** — no GCM passwords in the client config.
 
 ---
 
@@ -235,39 +253,64 @@ The MCP server has **two layers of authentication** — one to protect the MCP s
 %%{init: {'theme': 'default'}}%%
 flowchart LR
     subgraph "Layer 1: Client → MCP Server"
-        A(["🤖 AI Assistant"]) -->|"API Key\n(Authorization: Bearer key)"| B{{"⚙️ MCP Server"}}
+        A(["AI Assistant"]) -->|"API Key\n(Authorization: Bearer key)"| B{{"MCP Server"}}
+    end
+
+    subgraph "Admin (localhost only)"
+        E(["Admin (SSH)"]) -->|"POST /admin/keys"| B
     end
 
     subgraph "Layer 2: MCP Server → GCM"
-        B -->|"OAuth2\n(username + password + client_secret)"| C[("🔐 Keycloak")]
+        B -->|"OAuth2\n(username + password + client_secret)"| C[("Keycloak")]
         C -.->|"access_token"| B
-        B -->|"Bearer token"| D[["🌐 GCM API"]]
+        B -->|"Bearer token"| D[["GCM API"]]
     end
 
     style A fill:#e1f5fe
     style B fill:#fff3e0
     style C fill:#fce4ec
     style D fill:#e8f5e9
+    style E fill:#f3e5f5
 ```
 
 | Layer | What it protects | How it works |
 |-------|-----------------|---------------|
-| **Layer 1 — MCP API Key** | Prevents unauthorized clients from connecting to the MCP server | Client sends `Authorization: Bearer <GCM_MCP_API_KEY>` header. MCP server rejects requests without a valid key with `401 Unauthorized`. |
+| **Layer 1 — MCP API Key** | Prevents unauthorized clients from connecting to the MCP server | Client sends `Authorization: Bearer <key>` header. MCP server validates the key against the key store. Invalid or missing key → `401 Unauthorized`. |
 | **Layer 2 — GCM OAuth2** | Authenticates the MCP server to GCM's APIs via Keycloak | MCP server uses `GCM_USERNAME` + `GCM_PASSWORD` + `GCM_CLIENT_SECRET` to get an OAuth2 token from Keycloak. Token auto-refreshes every 5 min. |
 
-### Generating an MCP API Key
+### API Key Management
 
-Generate a random key and set it as an environment variable on the server:
+API keys are managed via **localhost-only admin endpoints** on the MCP server. You must be on the server (SSH) to create, list, or revoke keys.
+
+| Method | Endpoint | Action |
+|--------|----------|--------|
+| `POST` | `/admin/keys` | Generate a new API key for a user |
+| `GET` | `/admin/keys` | List all active keys (masked) |
+| `DELETE` | `/admin/keys/{key_prefix}` | Revoke a key |
+
+All `/admin/*` requests from non-localhost IPs → **403 Forbidden**.
 
 ```bash
-# Generate a secure random API key
-export GCM_MCP_API_KEY=$(openssl rand -hex 32)
-echo $GCM_MCP_API_KEY   # Save this — you'll need it for client config
+# SSH into the server
+ssh root@<mcp-server-host>
+
+# Generate a key
+curl -s -X POST http://localhost:8002/admin/keys \
+  -H "Content-Type: application/json" \
+  -d '{"user": "bob@company.com"}' | jq .
+
+# List active keys
+curl -s http://localhost:8002/admin/keys | jq .
+
+# Revoke a key (by prefix)
+curl -s -X DELETE http://localhost:8002/admin/keys/a3f8e9b1
 ```
 
-Then add the same key to your AI assistant's MCP config (see [Connecting Your AI Assistant](#connecting-your-ai-assistant)).
+**Key storage:** Keys are stored as SHA-256 hashes in `/data/keys.json`. Raw keys are shown once at generation time and never stored or retrievable again. Mount a persistent volume at `/data` to preserve keys across container restarts.
 
-> **`GCM_MCP_API_KEY` is mandatory for network transports (SSE/REST).** The server **refuses to start** in SSE or REST mode without this key. It prevents unauthorized clients from using the deployed server as a proxy to GCM using the admin's credentials. stdio is exempt — the user runs the process locally with their own GCM credentials; GCM Keycloak (Layer 2) is the security gate.
+> **`/admin/*` endpoints are only accessible from `localhost`.** The server rejects all admin requests from non-local IPs with `403 Forbidden`. To manage keys from your laptop, use an SSH tunnel: `ssh -L 8002:localhost:8002 root@<mcp-server-host>`
+>
+> **stdio transport is exempt** from API key validation — the user runs the process locally with their own GCM credentials; GCM Keycloak (Layer 2) is the security gate.
 
 ---
 
@@ -373,11 +416,9 @@ The MCP server requires **two sets of credentials**, both set as environment var
 | `GCM_AUTH_MODE` | No | `oauth2` | Authentication mode |
 | `GCM_VERIFY_SSL` | No | `false` | SSL certificate verification |
 | `GCM_REQUEST_TIMEOUT` | No | `30` | API timeout in seconds |
-| `GCM_MCP_API_KEY` | **Yes*** | — | API key for client auth. Required for SSE/REST (network). Not needed for stdio (local). |
+| `GCM_MCP_KEY_STORE_PATH` | No | `/data/keys.json` | Path to the API key store file. Mount a persistent volume at `/data` for container deployments. |
 
 You can set these as environment variables or in a `.env` file alongside the server.
-
-> **\*** `GCM_MCP_API_KEY` is **mandatory for SSE and REST** (server exits with fatal error if not set). Not enforced for stdio because the user runs locally with their own GCM credentials — Keycloak (Layer 2) authenticates them directly.
 
 ---
 

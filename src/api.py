@@ -59,6 +59,7 @@ import uvicorn
 from src.tools import call_tool, list_tools, state
 from src.discovery import GCM_API_SCHEMA
 from src import config as mcp_config
+from src import keystore
 
 # ==================== Configuration ====================
 
@@ -100,11 +101,10 @@ app.add_middleware(
 
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
-    """Validate API key for REST API.
+    """Validate API key from key store for REST API.
 
     Every request must include: Authorization: Bearer <key>
     Only /health, /docs, /redoc, /openapi.json are exempt.
-    The server refuses to start without GCM_MCP_API_KEY set.
     """
     # Allow health, docs, and openapi schema without auth
     open_paths = {"/health", "/docs", "/redoc", "/openapi.json"}
@@ -114,7 +114,8 @@ async def api_key_middleware(request: Request, call_next):
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.removeprefix("Bearer ").strip()
 
-    if token != mcp_config.GCM_MCP_API_KEY:
+    key_info = keystore.validate_key(token)
+    if key_info is None:
         return FastAPIJSONResponse(
             {"error": "Unauthorized", "message": "Invalid or missing API key"},
             status_code=401,
@@ -306,7 +307,6 @@ async def get_schema():
 
 def main():
     """Start the HTTP API server."""
-    mcp_config.require_api_key("rest")
     print(f"{'='*60}")
     print(f"  GCM MCP Server — REST API")
     print(f"{'='*60}")
