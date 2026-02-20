@@ -70,40 +70,16 @@ flowchart TB
 
 ---
 
-## Prerequisites
-
-Before setting up the MCP server, you need the following:
-
-| # | What | Where to get it |
-|---|------|-----------------|
-| 1 | **GCM 2.0 server** (running and accessible) | Deployed on a VM/server with K3s |
-| 2 | **GCM login credentials** (`GCM_USERNAME` / `GCM_PASSWORD`) | Your GCM admin account (e.g., `gcmadmin@gcm.local`) |
-| 3 | **OIDC client credentials** (`GCM_CLIENT_ID` / `GCM_CLIENT_SECRET`) | Extract from K8s secret on the GCM server (see below) |
-| 4 | **Docker** (for container deployment) or **Python 3.10+** (for source) | [docker.com](https://docs.docker.com/get-docker/) or [python.org](https://www.python.org/downloads/) |
-| 5 | **An MCP-compatible AI assistant** | VS Code (Copilot), Claude Desktop, IBM Bob, or Cursor |
-
-### Step 1: Get the OIDC Client Credentials from GCM
-
-```bash
-ssh root@<gcm-server>
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-# Client ID (usually 'gcmclient')
-kubectl get secret oidc-client-secret -n gcmapp \
-  -o jsonpath='{.data.CLIENT_ID}' | base64 -d && echo
-
-# Client Secret
-kubectl get secret oidc-client-secret -n gcmapp \
-  -o jsonpath='{.data.CLIENT_SECRET}' | base64 -d && echo
-```
-
----
-
 ## Getting Started
 
-### Option 1: Use the Pre-Built Container (Recommended)
+> **📖 [Full Setup Guide](SETUP_GUIDE.md)** — Complete step-by-step instructions for server admins and clients, including deployment, client onboarding for VS Code / Claude Desktop / IBM Bob, key rotation, and troubleshooting.
+
+### Quick Start (Admin)
 
 ```bash
+# 1. Get OIDC credentials from the GCM server (see Setup Guide, step A1)
+
+# 2. Pull and run the container
 docker pull ghcr.io/ibm/gcm-mcp-server:latest
 
 docker run -d \
@@ -115,71 +91,23 @@ docker run -d \
   -e GCM_USERNAME="<your-gcm-username>" \
   -e GCM_PASSWORD="<your-gcm-password>" \
   -e GCM_CLIENT_ID="gcmclient" \
-  -e GCM_CLIENT_SECRET="<from-step-1>" \
+  -e GCM_CLIENT_SECRET="<oidc-client-secret>" \
   ghcr.io/ibm/gcm-mcp-server:latest
-```
 
-Verify it's running:
-
-```bash
+# 3. Verify
 curl http://localhost:8002/health
-```
 
-### Step 2: Generate an API Key
-
-API keys are generated from the server itself (localhost only). SSH into the server and run:
-
-```bash
-# Generate a key for a user
+# 4. Generate an API key for a client
 curl -s -X POST http://localhost:8002/admin/keys \
   -H "Content-Type: application/json" \
-  -d '{"user": "bob@company.com"}' | jq .
-
-# Response (key shown ONCE — copy it now):
-# {
-#   "key": "a3f8e9b1...",
-#   "user": "bob@company.com",
-#   "created": "2026-02-20T14:30:00Z",
-#   "key_prefix": "a3f8e9b1"
-# }
+  -d '{"user": "alice@ibm.com"}'
 ```
 
-Send the key to the user securely. They’ll need it for their AI assistant config.
+Send the key to the user securely — it is shown once and never stored.
 
-> **Admin operations are localhost-only.** You must be on the server (SSH) to manage keys. See [Security](#security) for details.
+### Quick Start (Client)
 
-The image supports both `linux/amd64` and `linux/arm64`.
-
-### Option 2: Run from Source
-
-```bash
-git clone https://github.com/IBM/gcm-mcp-server.git
-cd gcm-mcp-server
-pip install -e .
-
-export GCM_HOST=<gcm-server-ip>
-export GCM_USERNAME=<your-gcm-username>
-export GCM_PASSWORD=<your-gcm-password>
-export GCM_CLIENT_SECRET=<from-step-1>
-
-python -m src.server
-```
-
-Generate API keys after starting:
-
-```bash
-curl -s -X POST http://localhost:8002/admin/keys \
-  -H "Content-Type: application/json" \
-  -d '{"user": "bob@company.com"}'
-```
-
----
-
-## Connecting Your AI Assistant
-
-### VS Code (GitHub Copilot)
-
-Add to `.vscode/mcp.json` in your project (or VS Code user settings):
+Get the **server URL** and **API key** from your admin. Add to `.vscode/mcp.json`:
 
 ```json
 {
@@ -188,60 +116,14 @@ Add to `.vscode/mcp.json` in your project (or VS Code user settings):
       "type": "sse",
       "url": "http://<mcp-server-host>:8002/sse",
       "headers": {
-        "Authorization": "Bearer <your-mcp-api-key>"
+        "Authorization": "Bearer <your-api-key>"
       }
     }
   }
 }
 ```
 
-### Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "gcm-mcp-server": {
-      "type": "sse",
-      "url": "http://<mcp-server-host>:8002/sse",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-api-key>"
-      },
-      "alwaysAllow": ["gcm_auth", "gcm_api", "gcm_discover"]
-    }
-  }
-}
-```
-
-### IBM Bob
-
-Add to `~/Library/Application Support/IBM Bob/User/globalStorage/ibm.bob-code/settings/mcp_settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "gcm-mcp-server": {
-      "type": "sse",
-      "url": "http://<mcp-server-host>:8002/sse",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-api-key>"
-      },
-      "alwaysAllow": ["gcm_auth", "gcm_api", "gcm_discover"]
-    }
-  }
-}
-```
-
-### Verify the Connection
-
-After restarting your AI assistant, try:
-
-> *"Use gcm_discover to list all available GCM services"*
-
-You should see 11 services: usermanagement, tde, assetinventory, discovery, policy, policyrisk, audit, integration, notifications, clm, config.
-
-> **Note:** GCM credentials are configured on the server side. Your AI assistant config needs the server URL **and an API key from the admin** — no GCM passwords in the client config.
+Reload VS Code and start chatting. See the [Setup Guide](SETUP_GUIDE.md) for Claude Desktop, IBM Bob, key rotation, and troubleshooting.
 
 ---
 
@@ -280,7 +162,7 @@ flowchart LR
 
 ### API Key Management
 
-API keys are managed via **localhost-only admin endpoints** on the MCP server. You must be on the server (SSH) to create, list, or revoke keys.
+API keys are managed via **localhost-only admin endpoints** on the MCP server. You must be on the server (SSH) to create, list, or revoke keys. See the [Setup Guide — Key Rotation](SETUP_GUIDE.md#part-c-key-rotation--revocation-admin) for the full procedure.
 
 | Method | Endpoint | Action |
 |--------|----------|--------|
@@ -289,22 +171,6 @@ API keys are managed via **localhost-only admin endpoints** on the MCP server. Y
 | `DELETE` | `/admin/keys/{key_prefix}` | Revoke a key |
 
 All `/admin/*` requests from non-localhost IPs → **403 Forbidden**.
-
-```bash
-# SSH into the server
-ssh root@<mcp-server-host>
-
-# Generate a key
-curl -s -X POST http://localhost:8002/admin/keys \
-  -H "Content-Type: application/json" \
-  -d '{"user": "bob@company.com"}' | jq .
-
-# List active keys
-curl -s http://localhost:8002/admin/keys | jq .
-
-# Revoke a key (by prefix)
-curl -s -X DELETE http://localhost:8002/admin/keys/a3f8e9b1
-```
 
 **Key storage:** Keys are stored as SHA-256 hashes in `/data/keys.json`. Raw keys are shown once at generation time and never stored or retrievable again. Mount a persistent volume at `/data` to preserve keys across container restarts.
 
@@ -378,7 +244,7 @@ The MCP server requires **two sets of credentials**, both set as environment var
 
 **Why two sets?** Your username/password prove *who you are*. The client ID/secret prove *which application* is requesting the token. Keycloak requires both to issue an access token.
 
-**Retrieve the OIDC client credentials from the GCM server:** See [Prerequisites — Step 1](#step-1-get-the-oidc-client-credentials-from-gcm).
+**Retrieve the OIDC client credentials from the GCM server:** See the [Setup Guide — Step A1](SETUP_GUIDE.md#a1-get-oidc-client-credentials-from-the-gcm-server).
 
 ---
 
