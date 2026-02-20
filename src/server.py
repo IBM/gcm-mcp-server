@@ -116,10 +116,18 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
 
     # ---- Admin endpoints (localhost only) ----
 
+    # Allowed admin IPs — localhost + Docker bridge (host→container)
+    _ADMIN_ALLOWED_IPS = {"127.0.0.1", "::1", "localhost", "172.17.0.1"}
+
     def _is_localhost(request) -> bool:
-        """Check if request originates from localhost."""
+        """Check if request originates from localhost or Docker host.
+
+        Allows localhost and Docker bridge IPs so that
+        'curl http://localhost:8002/admin/keys' works from the
+        Docker host via SSH.
+        """
         client_host = request.client.host if request.client else None
-        return client_host in ("127.0.0.1", "::1", "localhost")
+        return client_host in _ADMIN_ALLOWED_IPS
 
     async def admin_create_key(request):
         if not _is_localhost(request):
