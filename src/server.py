@@ -179,6 +179,9 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
 
 def main():
     """Entry point for the MCP server. Supports stdio and SSE transports."""
+    # Fail fast if required env vars are missing
+    config.validate_required_config()
+
     parser = argparse.ArgumentParser(description="GCM MCP Server")
     parser.add_argument(
         "--transport", choices=["stdio", "sse"], default="stdio",

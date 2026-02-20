@@ -37,3 +37,4 @@ dist/
 
 # Workspace config (local settings)
 workspace_config.yaml
+logs_output.txt pull4.txt pull5.txt verify.txt

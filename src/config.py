@@ -21,9 +21,33 @@ GCM_KEYCLOAK_PORT = int(os.environ.get('GCM_KEYCLOAK_PORT', '30443'))
 
 GCM_USERNAME = os.environ.get('GCM_USERNAME')
 GCM_PASSWORD = os.environ.get('GCM_PASSWORD')
-GCM_CLIENT_ID = os.environ.get('GCM_CLIENT_ID', 'admin')
-GCM_CLIENT_SECRET = os.environ.get('GCM_CLIENT_SECRET', 'password')
+GCM_CLIENT_ID = os.environ.get('GCM_CLIENT_ID', 'gcmclient')
+GCM_CLIENT_SECRET = os.environ.get('GCM_CLIENT_SECRET')  # Required — no default
 GCM_AUTH_MODE = os.environ.get('GCM_AUTH_MODE', 'auto')
+
+# ==================== Startup Validation ====================
+
+_REQUIRED_VARS = {
+    'GCM_HOST': GCM_HOST,
+    'GCM_USERNAME': GCM_USERNAME,
+    'GCM_PASSWORD': GCM_PASSWORD,
+    'GCM_CLIENT_SECRET': GCM_CLIENT_SECRET,
+}
+
+
+def validate_required_config():
+    """Fail fast if any required environment variable is missing.
+
+    Called once at server startup so operators see an immediate,
+    actionable error instead of a cryptic 401 from Keycloak later.
+    """
+    missing = [k for k, v in _REQUIRED_VARS.items() if not v]
+    if missing:
+        raise SystemExit(
+            f"FATAL: Missing required environment variables: {', '.join(missing)}\n"
+            f"Set them with -e flags in 'docker run' or in a .env file.\n"
+            f"See SETUP_GUIDE.md for details."
+        )
 
 # ==================== SSL & Timeouts ====================
 
