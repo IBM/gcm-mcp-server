@@ -100,10 +100,12 @@ app.add_middleware(
 
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
-    """Validate API key for REST API. Skips /health and /docs."""
-    if not mcp_config.GCM_MCP_API_KEY:
-        return await call_next(request)
+    """Validate API key for REST API.
 
+    Every request must include: Authorization: Bearer <key>
+    Only /health, /docs, /redoc, /openapi.json are exempt.
+    The server refuses to start without GCM_MCP_API_KEY set.
+    """
     # Allow health, docs, and openapi schema without auth
     open_paths = {"/health", "/docs", "/redoc", "/openapi.json"}
     if request.url.path in open_paths:
@@ -304,6 +306,7 @@ async def get_schema():
 
 def main():
     """Start the HTTP API server."""
+    mcp_config.require_api_key("rest")
     print(f"{'='*60}")
     print(f"  GCM MCP Server — REST API")
     print(f"{'='*60}")

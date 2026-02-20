@@ -60,16 +60,12 @@ async def _async_main_stdio():
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """Validates API key in Authorization header for SSE transport.
 
-    If GCM_MCP_API_KEY is not set, all requests are allowed (open mode).
-    If set, every request must include: Authorization: Bearer <key>
+    Every request must include: Authorization: Bearer <key>
     The /health endpoint is always accessible without auth.
+    The server refuses to start without GCM_MCP_API_KEY set.
     """
 
     async def dispatch(self, request, call_next):
-        # Skip auth if no API key configured (open mode)
-        if not config.GCM_MCP_API_KEY:
-            return await call_next(request)
-
         # Always allow health checks without auth
         if request.url.path == "/health":
             return await call_next(request)
@@ -112,12 +108,8 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
             "services": get_service_names(),
         })
 
-    middleware = []
-    if config.GCM_MCP_API_KEY:
-        middleware.append(Middleware(APIKeyMiddleware))
-        logger.info("API key authentication enabled")
-    else:
-        logger.warning("No GCM_MCP_API_KEY set — server is open (no client auth)")
+    middleware = [Middleware(APIKeyMiddleware)]
+    logger.info("API key authentication enforced for all SSE connections")
 
     return Starlette(
         debug=False,
@@ -151,6 +143,7 @@ def main():
 
     if args.transport == "sse":
         import uvicorn
+        config.require_api_key("sse")
         logger.info(f"Starting GCM MCP Server (SSE mode) on {args.host}:{args.port}")
         logger.info(f"Connect via: http://{args.host}:{args.port}/sse")
         logger.info("Tools: gcm_auth, gcm_api, gcm_discover")
