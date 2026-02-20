@@ -99,6 +99,7 @@ Expected response:
 ```
 
 Confirm:
+
 - `auth_required: true` — API key validation is active
 - `active_keys: 0` — no keys generated yet (you'll do this next)
 - `services` — all 11 GCM services discovered
@@ -135,6 +136,7 @@ Repeat for each client who needs access.
 ## Part B: Client Setup (Each User)
 
 You need two things from the admin:
+
 1. **Server URL** — e.g., `http://9.30.147.112:8002/sse`
 2. **API Key** — the 64-character hex string generated for you
 
@@ -164,18 +166,25 @@ Then reload: `Cmd+Shift+P` → **"Reload Window"**
 
 #### Claude Desktop
 
+Claude Desktop does not natively support SSE transports with custom headers. Use the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) proxy (requires Node.js):
+
+```bash
+npm install -g mcp-remote
+```
+
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "gcm-mcp-server": {
-      "type": "sse",
-      "url": "http://<mcp-server-host>:8002/sse",
-      "headers": {
-        "Authorization": "Bearer <your-api-key>"
-      },
-      "alwaysAllow": ["gcm_auth", "gcm_api", "gcm_discover"]
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://<mcp-server-host>:8002/sse",
+        "--header",
+        "Authorization: Bearer <your-api-key>"
+      ]
     }
   }
 }

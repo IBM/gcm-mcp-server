@@ -279,7 +279,7 @@ The MCP server requires **two sets of credentials**, both set as environment var
 | `GCM_PASSWORD` | Yes | — | Your GCM password |
 | `GCM_CLIENT_ID` | No | `gcmclient` | OIDC client ID |
 | `GCM_CLIENT_SECRET` | Yes | — | OIDC client secret (from K8s) |
-| `GCM_AUTH_MODE` | No | `oauth2` | Authentication mode |
+| `GCM_AUTH_MODE` | No | `auto` | Authentication mode |
 | `GCM_VERIFY_SSL` | No | `false` | SSL certificate verification |
 | `GCM_REQUEST_TIMEOUT` | No | `30` | API timeout in seconds |
 | `GCM_MCP_KEY_STORE_PATH` | No | `/data/keys.json` | Path to the API key store file. Mount a persistent volume at `/data` for container deployments. |

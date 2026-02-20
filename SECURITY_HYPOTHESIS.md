@@ -51,9 +51,11 @@ Key 7b2c... → tom@company.com
 ### 4. Short-Lived JWT via Keycloak
 
 1. User runs:
+
    ```bash
    gcm-mcp-server get-token --server https://keycloak:30443 --user bob@gcm.local
    ```
+
 2. Enters their GCM password
 3. Gets back a JWT that expires in 8 hours
 4. Puts the JWT in their `mcp.json`
@@ -135,11 +137,13 @@ open http://localhost:8002/admin/
 ```
 
 The web UI shows:
+
 - A form: enter user email → click "Generate Key" → key displayed once
 - A table: all active keys (prefix, user, created date) with "Revoke" buttons
 - Still localhost-only — the SSH tunnel forwards laptop's `localhost:8002` to the server's `localhost:8002`
 
 **Both options hit the same endpoint: `http://localhost:8002/admin/`**
+
 - Option A: you're on the server (SSH) → localhost is the server directly
 - Option B: you're on your laptop → SSH tunnel makes localhost point to the server
 
@@ -164,7 +168,7 @@ The web UI shows:
 }
 ```
 
-4. User connects — server validates key against key store → allowed
+1. User connects — server validates key against key store → allowed
 
 ### Key Rotation
 

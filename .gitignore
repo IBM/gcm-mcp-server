@@ -2,7 +2,6 @@
 .env
 .env.local
 .env.*.local
-.env.example
 
 # Python
 __pycache__/
@@ -37,4 +36,20 @@ dist/
 
 # Workspace config (local settings)
 workspace_config.yaml
-logs_output.txt pull4.txt pull5.txt verify.txt
+
+# Scratch / debug output
+*.output.txt
+*_output.txt
+*_result.txt
+*_result2.txt
+*_run.txt
+*_current.json
+*_new.json
+logs_output.txt
+pull*.txt
+verify.txt
+tags_output.txt
+deploy_*.txt
+app_check_output.txt
+bob_config_*.json
+claude_config_*.json

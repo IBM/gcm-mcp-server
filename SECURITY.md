@@ -58,7 +58,8 @@ When deploying this project:
 
 - This is a development/demonstration project (MVP status)
 - Not recommended for production use without thorough security review
-- No built-in authentication for HTTP endpoints
+- HTTP (SSE) endpoints require a valid API key (`Authorization: Bearer <key>` header) — see [SETUP_GUIDE.md](SETUP_GUIDE.md) for key management
+- Admin endpoints (`/admin/*`) are restricted to localhost only
 - Logs may contain sensitive GCM data
 
 ## Disclaimer
