@@ -36,16 +36,17 @@ GCM_MCP_API_KEY = os.environ.get('GCM_MCP_API_KEY')  # Required for SSE/REST (ne
 
 
 def require_api_key(transport: str) -> None:
-    """Enforce API key for network transports. Call at server startup.
+    """Enforce API key on all transports. Call at server startup.
 
-    Raises SystemExit if GCM_MCP_API_KEY is not set for SSE or REST transport.
-    stdio is exempt because it runs as a local subprocess pipe.
+    Raises SystemExit if GCM_MCP_API_KEY is not set.
+    - SSE/REST: prevents unauthorized network access (real secret)
+    - stdio: compliance gate — forces deliberate key configuration
     """
-    if transport in ("sse", "rest", "api") and not GCM_MCP_API_KEY:
+    if not GCM_MCP_API_KEY:
         logger = get_logger("gcm-mcp")
         logger.critical(
             "FATAL: GCM_MCP_API_KEY is not set. "
-            "Network transports (SSE/REST) REQUIRE an API key. "
+            "All transports require an API key (compliance policy). "
             "Generate one with: export GCM_MCP_API_KEY=$(openssl rand -hex 32)"
         )
         raise SystemExit(1)

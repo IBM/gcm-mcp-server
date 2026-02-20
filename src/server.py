@@ -44,6 +44,7 @@ app.read_resource()(read_resource)
 
 async def _async_main_stdio():
     """Run the MCP server over stdio."""
+    config.require_api_key("stdio")
     logger.info("Starting GCM MCP Server (stdio mode)")
     logger.info("Tools: gcm_auth, gcm_api, gcm_discover")
 

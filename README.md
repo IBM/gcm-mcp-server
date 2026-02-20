@@ -267,7 +267,7 @@ echo $GCM_MCP_API_KEY   # Save this — you'll need it for client config
 
 Then add the same key to your AI assistant's MCP config (see [Connecting Your AI Assistant](#connecting-your-ai-assistant)).
 
-> **`GCM_MCP_API_KEY` is mandatory.** The MCP server **refuses to start** in SSE or REST mode without this variable set. This is an enterprise security requirement — there is no "open mode" for network transports. For local `stdio` transport only, the key is not enforced (stdio runs as a local subprocess pipe with no network exposure).
+> **`GCM_MCP_API_KEY` is mandatory on all transports.** The MCP server **refuses to start** without this variable set, regardless of transport mode. For SSE/REST it is a real network secret. For stdio it is a compliance gate — the server will not run unless explicitly configured.
 
 ---
 
@@ -373,11 +373,11 @@ The MCP server requires **two sets of credentials**, both set as environment var
 | `GCM_AUTH_MODE` | No | `oauth2` | Authentication mode |
 | `GCM_VERIFY_SSL` | No | `false` | SSL certificate verification |
 | `GCM_REQUEST_TIMEOUT` | No | `30` | API timeout in seconds |
-| `GCM_MCP_API_KEY` | **Yes** | — | API key for client authentication. Server refuses to start without it (SSE/REST). |
+| `GCM_MCP_API_KEY` | **Yes** | — | API key for client authentication. Mandatory on all transports (SSE, REST, stdio). |
 
 You can set these as environment variables or in a `.env` file alongside the server.
 
-> **Security:** `GCM_MCP_API_KEY` is **mandatory** for SSE and REST transports. The server will exit with a fatal error if not set. Only `stdio` transport (local subprocess pipe) is exempt.
+> **Security:** `GCM_MCP_API_KEY` is **mandatory on all transports**. The server exits with a fatal error if not set.
 
 ---
 
