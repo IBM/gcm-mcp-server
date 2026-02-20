@@ -247,7 +247,7 @@ Output:
 ```json
 [
   {"user": "alice@ibm.com", "key_prefix": "a3f8e9b1", "created": "2026-02-20T14:30:00Z"},
-  {"user": "bob@ibm.com",   "key_prefix": "7d3ae1a4", "created": "2026-02-20T15:00:00Z"}
+  {"user": "bob@ibm.com",   "key_prefix": "c5d2f7e3", "created": "2026-02-20T15:00:00Z"}
 ]
 ```
 
