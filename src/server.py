@@ -14,6 +14,8 @@ from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
 from starlette.responses import JSONResponse
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src import config
 from src.discovery import get_service_names
@@ -53,6 +55,39 @@ async def _async_main_stdio():
         )
 
 
+# ==================== API Key Middleware ====================
+
+class APIKeyMiddleware(BaseHTTPMiddleware):
+    """Validates API key in Authorization header for SSE transport.
+
+    If GCM_MCP_API_KEY is not set, all requests are allowed (open mode).
+    If set, every request must include: Authorization: Bearer <key>
+    The /health endpoint is always accessible without auth.
+    """
+
+    async def dispatch(self, request, call_next):
+        # Skip auth if no API key configured (open mode)
+        if not config.GCM_MCP_API_KEY:
+            return await call_next(request)
+
+        # Always allow health checks without auth
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        # Validate API key
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip()
+
+        if token != config.GCM_MCP_API_KEY:
+            logger.warning(f"Unauthorized request from {request.client.host} to {request.url.path}")
+            return JSONResponse(
+                {"error": "Unauthorized", "message": "Invalid or missing API key"},
+                status_code=401,
+            )
+
+        return await call_next(request)
+
+
 def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
     """Create a Starlette app with SSE transport for the MCP server."""
     sse = SseServerTransport("/messages/")
@@ -73,8 +108,16 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
             "server": "GCM MCP Server",
             "version": "1.0.0",
             "transport": "sse",
+            "auth_required": config.GCM_MCP_API_KEY is not None,
             "services": get_service_names(),
         })
+
+    middleware = []
+    if config.GCM_MCP_API_KEY:
+        middleware.append(Middleware(APIKeyMiddleware))
+        logger.info("API key authentication enabled")
+    else:
+        logger.warning("No GCM_MCP_API_KEY set — server is open (no client auth)")
 
     return Starlette(
         debug=False,
@@ -83,6 +126,7 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=sse.handle_post_message),
         ],
+        middleware=middleware,
     )
 
 

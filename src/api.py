@@ -49,14 +49,16 @@ from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse as FastAPIJSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
 
 # Import MCP server internals
 from src.tools import call_tool, list_tools, state
 from src.discovery import GCM_API_SCHEMA
+from src import config as mcp_config
 
 # ==================== Configuration ====================
 
@@ -92,6 +94,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ==================== API Key Middleware ====================
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    """Validate API key for REST API. Skips /health and /docs."""
+    if not mcp_config.GCM_MCP_API_KEY:
+        return await call_next(request)
+
+    # Allow health, docs, and openapi schema without auth
+    open_paths = {"/health", "/docs", "/redoc", "/openapi.json"}
+    if request.url.path in open_paths:
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+
+    if token != mcp_config.GCM_MCP_API_KEY:
+        return FastAPIJSONResponse(
+            {"error": "Unauthorized", "message": "Invalid or missing API key"},
+            status_code=401,
+        )
+
+    return await call_next(request)
 
 # ==================== Request/Response Models ====================
 

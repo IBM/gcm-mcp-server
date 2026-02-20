@@ -41,30 +41,73 @@ flowchart TB
     D[["🌐 IAG Gateway :31443"]]
     E[/"📦 GCM Services"\]
 
-    A -->|① User Query| B
-    B -->|② Authenticate| C
-    C -.->|③ Access Token| B
-    B -->|④ API Call + Bearer Token| D
-    D -->|⑤ Route Request| E
-    E -.->|⑥ JSON Response| D
-    D -.->|⑦ Forward Data| B
-    B -.->|⑧ AI Response| A
+    A -->|"① API Key (Bearer header)"| B
+    B -->|② Validate API Key| B
+    B -->|③ Authenticate| C
+    C -.->|④ Access Token| B
+    B -->|⑤ API Call + Bearer Token| D
+    D -->|⑥ Route Request| E
+    E -.->|⑦ JSON Response| D
+    D -.->|⑧ Forward Data| B
+    B -.->|⑨ AI Response| A
 ```
 
 **How it works — step by step:**
 
 | Step | What happens |
 | ---- | --------------------------------------------------------------- |
-| ① | AI assistant sends a request to MCP Server |
-| ② | MCP Server sends credentials to Keycloak (GCM's identity provider) |
-| ③ | Keycloak validates and returns an `access_token` (5 min TTL) |
-| ④ | MCP Server calls IAG Gateway with `Bearer <token>` |
-| ⑤ | IAG routes the request to the correct GCM microservice |
-| ⑥ | GCM service processes and returns JSON |
-| ⑦ | IAG passes the response back to MCP Server |
-| ⑧ | MCP Server formats and returns the answer to the AI assistant |
+| ① | AI assistant sends a request to MCP Server **with API key in the `Authorization` header** |
+| ② | MCP Server **validates the API key** — rejects with `401 Unauthorized` if missing or wrong |
+| ③ | MCP Server sends GCM credentials to Keycloak (GCM's identity provider) |
+| ④ | Keycloak validates and returns an `access_token` (5 min TTL) |
+| ⑤ | MCP Server calls IAG Gateway with `Bearer <token>` |
+| ⑥ | IAG routes the request to the correct GCM microservice |
+| ⑦ | GCM service processes and returns JSON |
+| ⑧ | IAG passes the response back to MCP Server |
+| ⑨ | MCP Server formats and returns the answer to the AI assistant |
 
 > **→ solid arrows** = request &nbsp;&nbsp; **⇢ dotted arrows** = response
+
+---
+
+## Prerequisites
+
+Before setting up the MCP server, you need the following:
+
+| # | What | Where to get it |
+|---|------|-----------------|
+| 1 | **GCM 2.0 server** (running and accessible) | Deployed on a VM/server with K3s |
+| 2 | **GCM login credentials** (`GCM_USERNAME` / `GCM_PASSWORD`) | Your GCM admin account (e.g., `gcmadmin@gcm.local`) |
+| 3 | **OIDC client credentials** (`GCM_CLIENT_ID` / `GCM_CLIENT_SECRET`) | Extract from K8s secret on the GCM server (see below) |
+| 4 | **MCP API Key** (`GCM_MCP_API_KEY`) | Generate locally (see below) |
+| 5 | **Docker** (for container deployment) or **Python 3.10+** (for source) | [docker.com](https://docs.docker.com/get-docker/) or [python.org](https://www.python.org/downloads/) |
+| 6 | **An MCP-compatible AI assistant** | VS Code (Copilot), Claude Desktop, IBM Bob, or Cursor |
+
+### Step 1: Get the OIDC Client Credentials from GCM
+
+```bash
+ssh root@<gcm-server>
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+# Client ID (usually 'gcmclient')
+kubectl get secret oidc-client-secret -n gcmapp \
+  -o jsonpath='{.data.CLIENT_ID}' | base64 -d && echo
+
+# Client Secret
+kubectl get secret oidc-client-secret -n gcmapp \
+  -o jsonpath='{.data.CLIENT_SECRET}' | base64 -d && echo
+```
+
+### Step 2: Generate an MCP API Key
+
+```bash
+# Generate a secure 64-character hex key
+export GCM_MCP_API_KEY=$(openssl rand -hex 32)
+echo "Your MCP API Key: $GCM_MCP_API_KEY"
+# Save this — you'll need it for both the server and client config
+```
+
+> **Why an API key?** Without it, anyone who can reach the MCP server's port can control GCM through it. The API key ensures only authorized AI assistants can connect. See [Security](#security) for details.
 
 ---
 
@@ -83,7 +126,8 @@ docker run -d \
   -e GCM_USERNAME="<your-gcm-username>" \
   -e GCM_PASSWORD="<your-gcm-password>" \
   -e GCM_CLIENT_ID="gcmclient" \
-  -e GCM_CLIENT_SECRET="<from-k8s-secret>" \
+  -e GCM_CLIENT_SECRET="<from-step-1>" \
+  -e GCM_MCP_API_KEY="<from-step-2>" \
   ghcr.io/ibm/gcm-mcp-server:latest
 ```
 
@@ -105,7 +149,8 @@ pip install -e .
 export GCM_HOST=<gcm-server-ip>
 export GCM_USERNAME=<your-gcm-username>
 export GCM_PASSWORD=<your-gcm-password>
-export GCM_CLIENT_SECRET=<from-k8s-secret>
+export GCM_CLIENT_SECRET=<from-step-1>
+export GCM_MCP_API_KEY=<from-step-2>
 
 python -m src.server
 ```
@@ -113,6 +158,24 @@ python -m src.server
 ---
 
 ## Connecting Your AI Assistant
+
+### VS Code (GitHub Copilot)
+
+Add to `.vscode/mcp.json` in your project (or VS Code user settings):
+
+```json
+{
+  "servers": {
+    "gcm-mcp-server": {
+      "type": "sse",
+      "url": "http://<mcp-server-host>:8002/sse",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-api-key>"
+      }
+    }
+  }
+}
+```
 
 ### Claude Desktop
 
@@ -124,6 +187,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
     "gcm-mcp-server": {
       "type": "sse",
       "url": "http://<mcp-server-host>:8002/sse",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-api-key>"
+      },
       "alwaysAllow": ["gcm_auth", "gcm_api", "gcm_discover"]
     }
   }
@@ -140,6 +206,9 @@ Add to `~/Library/Application Support/IBM Bob/User/globalStorage/ibm.bob-code/se
     "gcm-mcp-server": {
       "type": "sse",
       "url": "http://<mcp-server-host>:8002/sse",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-api-key>"
+      },
       "alwaysAllow": ["gcm_auth", "gcm_api", "gcm_discover"]
     }
   }
@@ -154,11 +223,55 @@ After restarting your AI assistant, try:
 
 You should see 11 services: usermanagement, tde, assetinventory, discovery, policy, policyrisk, audit, integration, notifications, clm, config.
 
-> **Note:** Credentials are configured on the server side. Your AI assistant config only needs the server URL — no passwords or API keys.
+> **Note:** GCM credentials are configured on the server side. Your AI assistant config needs the server URL **and the MCP API key** — no GCM passwords in the client config.
 
 ---
 
-## Authentication
+## Security
+
+The MCP server has **two layers of authentication** — one to protect the MCP server itself, and one to authenticate with GCM.
+
+```mermaid
+%%{init: {'theme': 'default'}}%%
+flowchart LR
+    subgraph "Layer 1: Client → MCP Server"
+        A(["🤖 AI Assistant"]) -->|"API Key\n(Authorization: Bearer key)"| B{{"⚙️ MCP Server"}}
+    end
+
+    subgraph "Layer 2: MCP Server → GCM"
+        B -->|"OAuth2\n(username + password + client_secret)"| C[("🔐 Keycloak")]
+        C -.->|"access_token"| B
+        B -->|"Bearer token"| D[["🌐 GCM API"]]
+    end
+
+    style A fill:#e1f5fe
+    style B fill:#fff3e0
+    style C fill:#fce4ec
+    style D fill:#e8f5e9
+```
+
+| Layer | What it protects | How it works |
+|-------|-----------------|---------------|
+| **Layer 1 — MCP API Key** | Prevents unauthorized clients from connecting to the MCP server | Client sends `Authorization: Bearer <GCM_MCP_API_KEY>` header. MCP server rejects requests without a valid key with `401 Unauthorized`. |
+| **Layer 2 — GCM OAuth2** | Authenticates the MCP server to GCM's APIs via Keycloak | MCP server uses `GCM_USERNAME` + `GCM_PASSWORD` + `GCM_CLIENT_SECRET` to get an OAuth2 token from Keycloak. Token auto-refreshes every 5 min. |
+
+### Generating an MCP API Key
+
+Generate a random key and set it as an environment variable on the server:
+
+```bash
+# Generate a secure random API key
+export GCM_MCP_API_KEY=$(openssl rand -hex 32)
+echo $GCM_MCP_API_KEY   # Save this — you'll need it for client config
+```
+
+Then add the same key to your AI assistant's MCP config (see [Connecting Your AI Assistant](#connecting-your-ai-assistant)).
+
+> **Without `GCM_MCP_API_KEY`:** If the variable is not set, the MCP server runs in **open mode** (no client auth) — suitable for local `stdio` transport only. For SSE/network deployments, always set an API key.
+
+---
+
+## GCM Authentication
 
 GCM uses [Keycloak](https://www.keycloak.org/) as its identity provider. Instead of authenticating directly with GCM, all login requests go through Keycloak's OAuth2/OIDC token endpoint. This is how GCM secures its APIs — every API call requires a Bearer token issued by Keycloak.
 
@@ -222,20 +335,7 @@ The MCP server requires **two sets of credentials**, both set as environment var
 
 **Why two sets?** Your username/password prove *who you are*. The client ID/secret prove *which application* is requesting the token. Keycloak requires both to issue an access token.
 
-**Retrieve the OIDC client credentials from the GCM server:**
-
-```bash
-ssh root@<gcm-server>
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-# Client ID (usually 'gcmclient')
-kubectl get secret oidc-client-secret -n gcmapp \
-  -o jsonpath='{.data.CLIENT_ID}' | base64 -d
-
-# Client Secret
-kubectl get secret oidc-client-secret -n gcmapp \
-  -o jsonpath='{.data.CLIENT_SECRET}' | base64 -d
-```
+**Retrieve the OIDC client credentials from the GCM server:** See [Prerequisites — Step 1](#step-1-get-the-oidc-client-credentials-from-gcm).
 
 ---
 
@@ -273,8 +373,11 @@ kubectl get secret oidc-client-secret -n gcmapp \
 | `GCM_AUTH_MODE` | No | `oauth2` | Authentication mode |
 | `GCM_VERIFY_SSL` | No | `false` | SSL certificate verification |
 | `GCM_REQUEST_TIMEOUT` | No | `30` | API timeout in seconds |
+| `GCM_MCP_API_KEY` | No* | — | API key for client authentication. *Required for network/SSE deployments. |
 
 You can set these as environment variables or in a `.env` file alongside the server.
+
+> **\*** `GCM_MCP_API_KEY` is optional for local `stdio` transport but **strongly recommended** for any SSE deployment where the server is network-accessible.
 
 ---
 

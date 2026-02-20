@@ -30,6 +30,10 @@ GCM_AUTH_MODE = os.environ.get('GCM_AUTH_MODE', 'auto')
 GCM_VERIFY_SSL = os.environ.get('GCM_VERIFY_SSL', 'false').lower() == 'true'
 GCM_REQUEST_TIMEOUT = int(os.environ.get('GCM_REQUEST_TIMEOUT', '30'))
 
+# ==================== MCP Server Security ====================
+
+GCM_MCP_API_KEY = os.environ.get('GCM_MCP_API_KEY')  # None = open mode (no client auth)
+
 # ==================== Logging ====================
 
 GCM_LOG_LEVEL = os.environ.get('GCM_LOG_LEVEL', 'INFO')
