@@ -135,24 +135,184 @@ Repeat for each client who needs access.
 
 ## Part B: Client Setup (Each User)
 
-You need two things from the admin:
+You need two things from the server admin:
 
 1. **Server URL** — e.g., `http://9.30.147.112:8002/sse`
-2. **API Key** — the 64-character hex string generated for you
+2. **API Key** — the 64-character hex string generated for you in step A5
 
-### B1. Configure Your AI Assistant
+---
 
-Choose your client and add the configuration:
+### B1. Prerequisites by Client
 
-#### Claude Desktop
+| Client | Prerequisites |
+|--------|---------------|
+| **IBM Bob** | IBM Bob installed, MCP support enabled |
+| **VS Code** | VS Code 1.99+, GitHub Copilot extension with Chat |
+| **Claude Desktop** | Claude Desktop installed, Node.js 18+ (for `mcp-remote` proxy) |
 
-Claude Desktop does not natively support SSE transports with custom headers. Use the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) proxy (requires Node.js):
+---
 
-```bash
-npm install -g mcp-remote
+### B2. IBM Bob Setup
+
+#### Settings file location
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/IBM Bob/User/globalStorage/ibm.bob-code/settings/mcp_settings.json` |
+| Linux | `~/.config/IBM Bob/User/globalStorage/ibm.bob-code/settings/mcp_settings.json` |
+| Windows | `%APPDATA%\IBM Bob\User\globalStorage\ibm.bob-code\settings\mcp_settings.json` |
+
+#### Option A — Let Bob configure itself
+
+The easiest way. Open Bob and give it this prompt (replace the placeholders):
+
+```
+Please configure the GCM MCP server in my Bob MCP settings file.
+Server URL: http://<mcp-server-host>:8002/sse
+API Key: <your-api-key>
+
+The settings file is at:
+~/Library/Application Support/IBM Bob/User/globalStorage/ibm.bob-code/settings/mcp_settings.json
+
+Add an entry called "gcm-mcp-server" with type "sse", the URL above,
+an Authorization Bearer header with my key, and alwaysAllow for
+gcm_auth, gcm_api, and gcm_discover. Do not overwrite any existing
+mcpServers entries.
 ```
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Bob will write the file and tell you to restart.
+
+#### Option B — Configure manually
+
+Create or edit the settings file with:
+
+```json
+{
+  "mcpServers": {
+    "gcm-mcp-server": {
+      "type": "sse",
+      "url": "http://<mcp-server-host>:8002/sse",
+      "headers": {
+        "Authorization": "Bearer <your-api-key>"
+      },
+      "alwaysAllow": ["gcm_auth", "gcm_api", "gcm_discover"]
+    }
+  }
+}
+```
+
+> If the file already has other MCP servers, add the `gcm-mcp-server` block inside the existing `mcpServers` object — do not replace the whole file.
+
+**Restart Bob** after saving.
+
+#### Verify
+
+Prompt Bob:
+> *"List all available GCM services using the MCP server"*
+
+Expected: 11 services (usermanagement, tde, assetinventory, discovery, policy, policyrisk, audit, integration, notifications, clm, config).
+
+---
+
+### B3. VS Code (GitHub Copilot) Setup
+
+#### Requirements
+- VS Code 1.99 or later
+- GitHub Copilot extension with Chat enabled
+
+#### Settings file location
+
+| Scope | Path |
+|-------|------|
+| Per-project | `.vscode/mcp.json` in the project root |
+| Global (macOS) | `~/Library/Application Support/Code/User/mcp.json` |
+| Global (Linux) | `~/.config/Code/User/mcp.json` |
+| Global (Windows) | `%APPDATA%\Code\User\mcp.json` |
+
+#### Option A — Let Copilot configure itself
+
+Open GitHub Copilot Chat and ask:
+
+```
+Please configure the GCM MCP server in my VS Code MCP settings.
+Create or update .vscode/mcp.json in this project with:
+- Server name: GCM-MCP
+- Type: sse
+- URL: http://<mcp-server-host>:8002/sse
+- Authorization header: Bearer <your-api-key>
+```
+
+Copilot will create or update the file directly. No restart needed.
+
+#### Option B — Configure manually
+
+Create `.vscode/mcp.json` in your project root:
+
+```json
+{
+  "servers": {
+    "GCM-MCP": {
+      "type": "sse",
+      "url": "http://<mcp-server-host>:8002/sse",
+      "headers": {
+        "Authorization": "Bearer <your-api-key>"
+      }
+    }
+  }
+}
+```
+
+VS Code picks up the file immediately — no restart needed.
+
+#### Verify
+
+In Copilot Chat:
+> *"Use the GCM MCP server to list all available services"*
+
+---
+
+### B4. Claude Desktop Setup
+
+Claude Desktop does not natively support SSE transports with custom headers. A lightweight proxy called `mcp-remote` bridges this gap.
+
+#### Prerequisites
+
+1. **Node.js 18+** — check with `node --version`. Install from [nodejs.org](https://nodejs.org) if missing.
+2. **`mcp-remote`** — install once globally:
+   ```bash
+   npm install -g mcp-remote
+   ```
+
+#### Settings file location
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+
+#### Option A — Let Claude generate the config block
+
+Open Claude Desktop chat and ask:
+
+```
+I want to add a GCM MCP server to my Claude Desktop config.
+Server URL: http://<mcp-server-host>:8002/sse
+API Key: <your-api-key>
+
+The config file is at:
+~/Library/Application Support/Claude/claude_desktop_config.json
+
+Show me the exact JSON to add using mcp-remote as the command,
+passing the URL and an Authorization Bearer header with my key.
+I already have mcp-remote installed globally via npm.
+```
+
+Claude will output the exact JSON block to paste into the file.
+
+#### Option B — Configure manually
+
+Edit the config file:
 
 ```json
 {
@@ -170,53 +330,33 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-Restart Claude Desktop.
+> If you already have other MCP servers, add `gcm-mcp-server` inside the existing `mcpServers` object.
 
-#### IBM Bob (Cloud Desktop)
+**Restart Claude Desktop** after saving.
 
-Edit `~/Library/Application Support/IBM Bob/User/globalStorage/ibm.bob-code/settings/mcp_settings.json`:
+#### Verify
 
-```json
-{
-  "mcpServers": {
-    "gcm-mcp-server": {
-      "type": "sse",
-      "url": "http://<mcp-server-host>:8002/sse",
-      "headers": {
-        "Authorization": "Bearer <your-api-key>"
-      },
-      "alwaysAllow": ["gcm_auth", "gcm_api", "gcm_discover"]
-    }
-  }
-}
-```
+In a new chat:
+> *"List all available GCM services"*
 
-Restart Bob.
+---
 
-### B2. Verify the Connection
+### B5. Start Chatting with GCM
 
-After restarting your AI assistant, try this prompt:
+Once connected, use natural language. **You never need GCM credentials** — the server handles authentication to GCM internally. Your API key only authorises you to use the MCP server.
 
-> *"Use gcm_discover to list all available GCM services"*
-
-You should see 11 services: usermanagement, tde, assetinventory, discovery, policy, policyrisk, audit, integration, notifications, clm, config.
-
-### B3. Start Chatting with GCM
-
-You can now use natural language to interact with GCM. Example prompts:
-
-| What you want | Prompt |
-|---------------|--------|
-| Authenticate | *"Log into GCM"* |
-| Browse APIs | *"What endpoints are available for TDE key management?"* |
+| What you want | Example prompt |
+|---------------|----------------|
+| Browse APIs | *"What GCM endpoints are available for TDE key management?"* |
 | List users | *"List all GCM users and their roles"* |
-| Check keys | *"Show TDE keys expiring this month"* |
+| Check version | *"What version of GCM is running?"* |
+| TDE inventory | *"Show all TDE clients in the inventory"* |
 | Run a scan | *"Run a discovery scan on server db-prod-01"* |
-| Check compliance | *"Which policies have active violations?"* |
+| Check compliance | *"Which policies have active violations right now?"* |
 | Audit trail | *"Show audit events from the last 24 hours"* |
-| Certificates | *"List certificates expiring in 30 days"* |
-
-**You don't need GCM credentials.** The MCP server handles authentication to GCM using credentials configured by the admin on the server side. Your API key only proves you're authorized to talk to the MCP server.
+| Certificates | *"List certificates expiring in the next 30 days"* |
+| Violations dashboard | *"Give me a summary of current policy violations"* |
+| System config | *"Show the current GCM system configuration"* |
 
 ---
 

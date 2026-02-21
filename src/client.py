@@ -94,46 +94,85 @@ class GCMClient:
         """Get auth headers. Delegates to GCMAuth."""
         return self._auth.get_auth_headers()
 
+    def _reauth(self) -> bool:
+        """Re-authenticate using credentials from config (called on 401)."""
+        username = config.GCM_USERNAME
+        password = config.GCM_PASSWORD
+        if not username or not password:
+            return False
+        return self._auth.login(username, password)
+
     # ==================== HTTP Methods ====================
 
     def get(self, endpoint: str, params: Optional[Dict] = None) -> requests.Response:
-        """HTTP GET request."""
+        """HTTP GET request. Auto-retries once on 401 (token expiry)."""
         self._ensure_token()
-        return self.session.get(
+        response = self.session.get(
             f"{self.base_url}{endpoint}",
             params=params,
             headers=self._get_auth_headers(),
             timeout=self.timeout
         )
+        if response.status_code == 401 and self._reauth():
+            response = self.session.get(
+                f"{self.base_url}{endpoint}",
+                params=params,
+                headers=self._get_auth_headers(),
+                timeout=self.timeout
+            )
+        return response
 
     def post(self, endpoint: str, data: Optional[Dict] = None) -> requests.Response:
-        """HTTP POST request."""
+        """HTTP POST request. Auto-retries once on 401 (token expiry)."""
         self._ensure_token()
-        return self.session.post(
+        response = self.session.post(
             f"{self.base_url}{endpoint}",
             json=data,
             headers=self._get_auth_headers(),
             timeout=self.timeout
         )
+        if response.status_code == 401 and self._reauth():
+            response = self.session.post(
+                f"{self.base_url}{endpoint}",
+                json=data,
+                headers=self._get_auth_headers(),
+                timeout=self.timeout
+            )
+        return response
 
     def put(self, endpoint: str, data: Optional[Dict] = None) -> requests.Response:
-        """HTTP PUT request."""
+        """HTTP PUT request. Auto-retries once on 401 (token expiry)."""
         self._ensure_token()
-        return self.session.put(
+        response = self.session.put(
             f"{self.base_url}{endpoint}",
             json=data,
             headers=self._get_auth_headers(),
             timeout=self.timeout
         )
+        if response.status_code == 401 and self._reauth():
+            response = self.session.put(
+                f"{self.base_url}{endpoint}",
+                json=data,
+                headers=self._get_auth_headers(),
+                timeout=self.timeout
+            )
+        return response
 
     def delete(self, endpoint: str) -> requests.Response:
-        """HTTP DELETE request."""
+        """HTTP DELETE request. Auto-retries once on 401 (token expiry)."""
         self._ensure_token()
-        return self.session.delete(
+        response = self.session.delete(
             f"{self.base_url}{endpoint}",
             headers=self._get_auth_headers(),
             timeout=self.timeout
         )
+        if response.status_code == 401 and self._reauth():
+            response = self.session.delete(
+                f"{self.base_url}{endpoint}",
+                headers=self._get_auth_headers(),
+                timeout=self.timeout
+            )
+        return response
 
     def upload(self, endpoint: str, file_path: str, file_field: str = 'file') -> requests.Response:
         """Upload a file."""

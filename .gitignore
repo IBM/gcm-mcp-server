@@ -37,6 +37,9 @@ memory-bank
 # MCP client configs (template with placeholders, kept in memory-bank)
 mcp-client-configs.json
 
+# Local key store (dev only — production uses Docker volume)
+data/
+
 # Logs
 *.log
 
