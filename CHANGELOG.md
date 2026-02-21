@@ -35,7 +35,7 @@ The GCM MCP Server now requires API key authentication for all client connection
 **What you need to do:**
 
 1. **Get an API key from the server admin.**
-2. **Follow [Part B: Client Setup](SETUP_GUIDE.md#part-b-client-setup-each-user)** in the Setup Guide — it has step-by-step config for Claude Desktop and IBM Bob.
+2. **Follow [Part B: Client Setup](SETUP_GUIDE.md#part-b-client-setup-each-user)** in the Setup Guide — it has step-by-step config for VS Code, Claude Desktop, and IBM Bob.
 3. **Reload your AI assistant and test.**
 
 Everything else (GCM login, token refresh, API routing) works exactly as before. The only change on your side is adding the `Authorization` header.
