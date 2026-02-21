@@ -31,6 +31,12 @@ dist/
 # macOS
 .DS_Store
 
+# Memory bank (symlink to shared ~/code/memory-bank)
+memory-bank
+
+# MCP client configs (template with placeholders, kept in memory-bank)
+mcp-client-configs.json
+
 # Logs
 *.log
 
