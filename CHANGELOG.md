@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.0 — February 2026
+## v1.0.0 — February 2025
 
 ### Summary
 
