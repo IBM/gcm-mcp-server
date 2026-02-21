@@ -58,7 +58,7 @@ When deploying this project:
 
 - This is a development/demonstration project (MVP status)
 - Not recommended for production use without thorough security review
-- HTTP (SSE) endpoints require a valid API key (`Authorization: Bearer <key>` header) — see [SETUP_GUIDE.md](SETUP_GUIDE.md) for key management
+- HTTP (SSE) endpoints require a valid API key (`Authorization: Bearer <key>` header) — see [gcm-mcp-server-e2e-setup-guide.md](gcm-mcp-server-e2e-setup-guide.md) for key management
 - Admin endpoints (`/admin/*`) are restricted to localhost only
 - Logs may contain sensitive GCM data
 

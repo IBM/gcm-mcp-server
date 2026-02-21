@@ -46,7 +46,7 @@ def validate_required_config():
         raise SystemExit(
             f"FATAL: Missing required environment variables: {', '.join(missing)}\n"
             f"Set them with -e flags in 'docker run' or in a .env file.\n"
-            f"See SETUP_GUIDE.md for details."
+            f"See gcm-mcp-server-e2e-setup-guide.md for details."
         )
 
 # ==================== SSL & Timeouts ====================

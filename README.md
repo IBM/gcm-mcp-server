@@ -72,7 +72,7 @@ flowchart TB
 
 ## Getting Started
 
-> **📖 [Full Setup Guide](SETUP_GUIDE.md)** — Complete step-by-step instructions for server admins and clients, including deployment, client onboarding for Claude Desktop / IBM Bob, key rotation, and troubleshooting.
+> **📖 [End-to-End Setup Guide](gcm-mcp-server-e2e-setup-guide.md)** — Complete step-by-step instructions for server admins and clients, including deployment, client onboarding for IBM Bob, key rotation, and troubleshooting.
 
 ### Quick Start (Admin)
 
@@ -107,7 +107,7 @@ Send the key to the user securely — it is shown once and never stored.
 
 ### Quick Start (Client)
 
-Get the **server URL** and **API key** from your admin. See the [Setup Guide](SETUP_GUIDE.md) for Claude Desktop and IBM Bob configuration, key rotation, and troubleshooting.
+Get the **server URL** and **API key** from your admin. See the [End-to-End Setup Guide](gcm-mcp-server-e2e-setup-guide.md) for IBM Bob configuration, key rotation, and troubleshooting.
 
 ---
 
@@ -146,7 +146,7 @@ flowchart LR
 
 ### API Key Management
 
-API keys are managed via **localhost-only admin endpoints** on the MCP server. You must be on the server (SSH) to create, list, or revoke keys. See the [Setup Guide — Key Rotation](SETUP_GUIDE.md#part-c-key-rotation--revocation-admin) for the full procedure.
+API keys are managed via **localhost-only admin endpoints** on the MCP server. You must be on the server (SSH) to create, list, or revoke keys. See the [End-to-End Setup Guide](gcm-mcp-server-e2e-setup-guide.md) for the full procedure.
 
 | Method | Endpoint | Action |
 |--------|----------|--------|
@@ -228,7 +228,7 @@ The MCP server requires **two sets of credentials**, both set as environment var
 
 **Why two sets?** Your username/password prove *who you are*. The client ID/secret prove *which application* is requesting the token. Keycloak requires both to issue an access token.
 
-**Retrieve the OIDC client credentials from the GCM server:** See the [Setup Guide — Step A1](SETUP_GUIDE.md#a1-get-oidc-client-credentials-from-the-gcm-server).
+**Retrieve the OIDC client credentials from the GCM server:** See [Part A of the End-to-End Setup Guide](gcm-mcp-server-e2e-setup-guide.md).
 
 ---
 

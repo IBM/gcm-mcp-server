@@ -240,7 +240,7 @@ If you share this guide file with someone, they can give Bob this single prompt 
 
 ```
 Please read the file at:
-~/code/GCM-MCP/BOB_SETUP_GUIDE.md
+~/code/GCM-MCP/gcm-mcp-server-e2e-setup-guide.md
 
 Then configure my IBM Bob MCP settings for the GCM MCP server as described
 in the "Option A — Ask Bob to Configure Itself" section (Part B2).
@@ -313,60 +313,3 @@ curl -s -X POST http://localhost:8002/admin/keys \
 ```
 
 Send the new key to the user and ask them to update their Bob config (replace the old key in the `Authorization` header).
-
-### When to rotate
-
-| Situation | Action |
-|-----------|--------|
-| Key compromised or leaked | Revoke immediately, generate new, redistribute |
-| User leaves the team | Revoke their key |
-| Scheduled rotation | Generate new, update client, then revoke old |
-| User forgot their key | Revoke by prefix, generate new |
-
----
-
-## Troubleshooting
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `401 Unauthorized` when Bob connects | Missing or wrong API key in Bob config | Check `Authorization: Bearer <key>` in `mcp_settings.json` |
-| `403 Forbidden` on `/admin/keys` | Calling admin endpoint from non-localhost | SSH into the server first, then run `curl` locally |
-| Bob says "no MCP tools available" | Bob not restarted after config change | Restart Bob |
-| `active_keys: 0` in health | No keys generated yet | Run `POST /admin/keys` from the server (step A5) |
-| Keys lost after container restart | No persistent volume mounted | Recreate container with `-v gcm-mcp-data:/data` |
-| Container not reachable | Port 8002 blocked | Check firewall: `ufw allow 8002` or equivalent |
-| GCM calls fail with 500 | Wrong `GCM_HOST` / credentials | Check `docker logs gcm-mcp-server --tail 50` |
-| `Connection refused on port 8002` | Container stopped | Check `docker ps` and `docker start gcm-mcp-server` |
-
----
-
-## Quick Reference
-
-```bash
-# On the MCP server host:
-
-# Health check
-curl http://localhost:8002/health
-
-# List all API keys
-curl http://localhost:8002/admin/keys
-
-# Generate a key for a user
-curl -s -X POST http://localhost:8002/admin/keys \
-  -H "Content-Type: application/json" \
-  -d '{"user": "name@ibm.com"}'
-
-# Revoke a key
-curl -X DELETE http://localhost:8002/admin/keys/<key-prefix>
-
-# Container logs
-docker logs gcm-mcp-server --tail 50
-
-# Restart container
-docker restart gcm-mcp-server
-
-# Update to latest image
-docker pull ghcr.io/ibm/gcm-mcp-server:latest
-docker stop gcm-mcp-server && docker rm gcm-mcp-server
-# then re-run the docker run command from step A3
-```
