@@ -142,27 +142,7 @@ You need two things from the admin:
 
 ### B1. Configure Your AI Assistant
 
-Choose your editor and add the configuration:
-
-#### VS Code (GitHub Copilot)
-
-Create or edit `.vscode/mcp.json` in your project root:
-
-```json
-{
-  "servers": {
-    "gcm-mcp-server": {
-      "type": "sse",
-      "url": "http://<mcp-server-host>:8002/sse",
-      "headers": {
-        "Authorization": "Bearer <your-api-key>"
-      }
-    }
-  }
-}
-```
-
-Then reload: `Cmd+Shift+P` → **"Reload Window"**
+Choose your client and add the configuration:
 
 #### Claude Desktop
 
@@ -280,7 +260,7 @@ Send the new key to Alice securely.
 
 ### C4. Client: Update Your Config
 
-Replace the old key with the new one in your `.vscode/mcp.json` (or equivalent config), then reload your AI assistant.
+Replace the old key with the new one in your client config (Claude Desktop or IBM Bob), then reload your AI assistant.
 
 ### When to Rotate Keys
 

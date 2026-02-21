@@ -151,22 +151,7 @@ The web UI shows:
 
 1. Requests MCP access from admin (email, Slack, ticket)
 2. Admin generates key, sends it to user securely
-3. User adds key to their MCP client config:
-
-```json
-// .vscode/mcp.json
-{
-  "servers": {
-    "gcm": {
-      "type": "sse",
-      "url": "http://appserver1:8002/sse",
-      "headers": {
-        "Authorization": "Bearer a3f8e9b1c4d7...full-key"
-      }
-    }
-  }
-}
-```
+3. User adds key to their MCP client config (Claude Desktop, IBM Bob, etc.) with the server URL and `Authorization: Bearer <key>` header
 
 1. User connects — server validates key against key store → allowed
 

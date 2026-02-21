@@ -72,7 +72,7 @@ flowchart TB
 
 ## Getting Started
 
-> **📖 [Full Setup Guide](SETUP_GUIDE.md)** — Complete step-by-step instructions for server admins and clients, including deployment, client onboarding for VS Code / Claude Desktop / IBM Bob, key rotation, and troubleshooting.
+> **📖 [Full Setup Guide](SETUP_GUIDE.md)** — Complete step-by-step instructions for server admins and clients, including deployment, client onboarding for Claude Desktop / IBM Bob, key rotation, and troubleshooting.
 
 ### Quick Start (Admin)
 
@@ -107,23 +107,7 @@ Send the key to the user securely — it is shown once and never stored.
 
 ### Quick Start (Client)
 
-Get the **server URL** and **API key** from your admin. Add to `.vscode/mcp.json`:
-
-```json
-{
-  "servers": {
-    "gcm-mcp-server": {
-      "type": "sse",
-      "url": "http://<mcp-server-host>:8002/sse",
-      "headers": {
-        "Authorization": "Bearer <your-api-key>"
-      }
-    }
-  }
-}
-```
-
-Reload VS Code and start chatting. See the [Setup Guide](SETUP_GUIDE.md) for Claude Desktop, IBM Bob, key rotation, and troubleshooting.
+Get the **server URL** and **API key** from your admin. See the [Setup Guide](SETUP_GUIDE.md) for Claude Desktop and IBM Bob configuration, key rotation, and troubleshooting.
 
 ---
 
