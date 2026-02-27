@@ -36,8 +36,6 @@ flowchart TB
 | ⑧ | IAG passes the response back to MCP Server |
 | ⑨ | MCP Server formats and returns the answer to the AI assistant |
 
-> **→ solid arrows** = request &nbsp;&nbsp; **⇢ dotted arrows** = response
-
 ---
 
 ## IBM Public Repository Disclosure
