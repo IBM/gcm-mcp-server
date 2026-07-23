@@ -341,10 +341,17 @@ async def handle_api(args: Dict[str, Any]) -> List[TextContent]:
     method = endpoint_def["method"]
     path = service["base"] + endpoint_def["path"]
 
-    # Substitute path parameters
+    # Substitute path parameters (single segment only; reject traversal)
+    from urllib.parse import quote
+
     path_params = args.get("path_params", {})
     for key, value in path_params.items():
-        path = path.replace(f"{{{key}}}", str(value))
+        raw = str(value)
+        if any(bad in raw for bad in ("..", "/", "\\", "\x00")):
+            return [TextContent(type="text", text=json.dumps({
+                "error": f"Invalid path parameter '{key}': value must be a single path segment",
+            }, indent=2))]
+        path = path.replace(f"{{{key}}}", quote(raw, safe=""))
 
     # Check for unsubstituted path params
     if "{" in path:
@@ -366,6 +373,14 @@ async def execute_raw_api(client: GCMClient, args: Dict[str, Any]) -> List[TextC
     """Execute raw API endpoint call."""
     method = args.get("method", "GET").upper()
     endpoint = args["endpoint"]
+    if not isinstance(endpoint, str) or not endpoint.startswith("/"):
+        return [TextContent(type="text", text=json.dumps({
+            "error": "endpoint must be a path starting with '/'",
+        }, indent=2))]
+    if ".." in endpoint.split("/") or "\\" in endpoint or "\x00" in endpoint:
+        return [TextContent(type="text", text=json.dumps({
+            "error": "endpoint path must not contain '..' or backslashes",
+        }, indent=2))]
     params = args.get("params", {})
     body = args.get("body")
 

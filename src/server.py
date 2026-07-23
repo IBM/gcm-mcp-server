@@ -7,15 +7,16 @@ Supports stdio and SSE transports.
 
 import argparse
 import asyncio
+import os
+import secrets
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
-from starlette.routing import Route, Mount
+from starlette.routing import Route
 from starlette.responses import JSONResponse
-from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
+
 
 from src import config
 from src import keystore
@@ -56,44 +57,26 @@ async def _async_main_stdio():
         )
 
 
-# ==================== API Key Middleware ====================
-
-class APIKeyMiddleware(BaseHTTPMiddleware):
-    """Validates API key from the key store in Authorization header.
-
-    Every request must include: Authorization: Bearer <key>
-    The /health and /admin/* endpoints are handled separately.
-    """
-
-    async def dispatch(self, request, call_next):
-        # Always allow health checks without auth
-        if request.url.path == "/health":
-            return await call_next(request)
-
-        # Admin endpoints use localhost check, not API key
-        if request.url.path.startswith("/admin"):
-            return await call_next(request)
-
-        # Validate API key against key store
-        auth_header = request.headers.get("Authorization", "")
-        token = auth_header.removeprefix("Bearer ").strip()
-
-        key_info = keystore.validate_key(token)
-        if key_info is None:
-            logger.warning(f"Unauthorized request from {request.client.host} to {request.url.path}")
-            return JSONResponse(
-                {"error": "Unauthorized", "message": "Invalid or missing API key"},
-                status_code=401,
-            )
-
-        return await call_next(request)
-
-
 def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
     """Create a Starlette app with SSE transport for the MCP server."""
     sse = SseServerTransport("/messages/")
 
+    def _check_key(request) -> bool:
+        """Validate API key from Authorization header against key store."""
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip()
+        return keystore.validate_key(token) is not None
+
+    _UNAUTHORIZED = JSONResponse(
+        {"error": "Unauthorized", "message": "Invalid or missing API key"},
+        status_code=401,
+    )
+
+    # --- MCP SSE handlers (auth checked inline — BaseHTTPMiddleware
+    #     is incompatible with raw ASGI SSE streaming) ---
     async def handle_sse(request):
+        if not _check_key(request):
+            return _UNAUTHORIZED
         async with sse.connect_sse(
             request.scope, request.receive, request._send
         ) as (read_stream, write_stream):
@@ -103,6 +86,11 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
                 app.create_initialization_options()
             )
 
+    async def handle_messages(request):
+        if not _check_key(request):
+            return _UNAUTHORIZED
+        await sse.handle_post_message(request.scope, request.receive, request._send)
+
     async def health(request):
         return JSONResponse({
             "status": "ok",
@@ -111,27 +99,43 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
             "transport": "sse",
             "auth_required": True,
             "active_keys": len(keystore.list_keys()),
+            "admin_token_configured": bool(os.getenv("MCP_ADMIN_TOKEN", "").strip()),
             "services": get_service_names(),
         })
 
-    # ---- Admin endpoints (localhost only) ----
+    # ---- Admin endpoints (MCP_ADMIN_TOKEN required; no IP trust) ----
 
-    # Allowed admin IPs — localhost + Docker bridge (host→container)
-    _ADMIN_ALLOWED_IPS = {"127.0.0.1", "::1", "localhost", "172.17.0.1"}
+    def _admin_authorized(request) -> bool:
+        admin_token = os.getenv("MCP_ADMIN_TOKEN", "").strip()
+        if not admin_token:
+            return False
+        auth_header = request.headers.get("Authorization", "")
+        candidates = []
+        if auth_header:
+            candidates.append(auth_header.removeprefix("Bearer ").strip())
+        x_admin = request.headers.get("X-Admin-Token", "").strip()
+        if x_admin:
+            candidates.append(x_admin)
+        for candidate in candidates:
+            if candidate and secrets.compare_digest(candidate, admin_token):
+                return True
+        return False
 
-    def _is_localhost(request) -> bool:
-        """Check if request originates from localhost or Docker host.
-
-        Allows localhost and Docker bridge IPs so that
-        'curl http://localhost:8002/admin/keys' works from the
-        Docker host via SSH.
-        """
-        client_host = request.client.host if request.client else None
-        return client_host in _ADMIN_ALLOWED_IPS
+    def _admin_forbidden():
+        return JSONResponse(
+            {
+                "error": "Forbidden",
+                "message": (
+                    "Admin endpoints require MCP_ADMIN_TOKEN "
+                    "(Authorization: Bearer <token> or X-Admin-Token)."
+                ),
+            },
+            status_code=403,
+        )
 
     async def admin_create_key(request):
-        if not _is_localhost(request):
-            return JSONResponse({"error": "Forbidden", "message": "Admin endpoints are localhost only"}, status_code=403)
+        if not _admin_authorized(request):
+            return _admin_forbidden()
         try:
             body = await request.json()
             user = body.get("user", "").strip()
@@ -143,21 +147,20 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
         return JSONResponse(result, status_code=201)
 
     async def admin_list_keys(request):
-        if not _is_localhost(request):
-            return JSONResponse({"error": "Forbidden", "message": "Admin endpoints are localhost only"}, status_code=403)
+        if not _admin_authorized(request):
+            return _admin_forbidden()
         return JSONResponse(keystore.list_keys())
 
     async def admin_revoke_key(request):
-        if not _is_localhost(request):
-            return JSONResponse({"error": "Forbidden", "message": "Admin endpoints are localhost only"}, status_code=403)
+        if not _admin_authorized(request):
+            return _admin_forbidden()
         key_prefix = request.path_params["key_prefix"]
         result = keystore.revoke_key(key_prefix)
         if result is None:
             return JSONResponse({"error": "Not Found", "message": f"No key with prefix '{key_prefix}'"}, status_code=404)
         return JSONResponse(result)
 
-    middleware = [Middleware(APIKeyMiddleware)]
-    logger.info("API key authentication enforced for all SSE connections")
+    logger.info("API key authentication enforced for SSE and /messages/ (inline)")
     logger.info(f"Key store: {keystore.KEY_STORE_PATH}")
     logger.info(f"Active keys: {len(keystore.list_keys())}")
 
@@ -166,12 +169,12 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
         routes=[
             Route("/health", health),
             Route("/sse", endpoint=handle_sse),
-            Mount("/messages/", app=sse.handle_post_message),
+            Route("/messages/", endpoint=handle_messages, methods=["POST"]),
+            Route("/messages/{path:path}", endpoint=handle_messages, methods=["POST"]),
             Route("/admin/keys", admin_create_key, methods=["POST"]),
             Route("/admin/keys", admin_list_keys, methods=["GET"]),
             Route("/admin/keys/{key_prefix}", admin_revoke_key, methods=["DELETE"]),
         ],
-        middleware=middleware,
     )
 
 
