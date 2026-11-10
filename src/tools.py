@@ -10,6 +10,7 @@ import io
 import json
 import re
 import sys
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -33,32 +34,93 @@ from src.discovery import (
 
 logger = config.get_logger("gcm-mcp")
 
+# Set by the SSE handlers for the API key on this connection.
+# stdio leaves this empty: one process, one client.
+current_key: ContextVar[Optional[dict]] = ContextVar("gcm_mcp_current_key", default=None)
+
+
+def _key_slot() -> Optional[str]:
+    """Key prefix for the caller, or None in stdio mode."""
+    meta = current_key.get()
+    if not meta:
+        return None
+    return meta.get("key_prefix")
+
+
+def _shared_service_ok(meta: Optional[dict]) -> bool:
+    """True only when this deployment opted in and the key is the service account."""
+    if not meta or not config.GCM_MCP_SHARED_SERVICE_ACCOUNT:
+        return False
+    return bool(config.GCM_USERNAME) and meta.get("user") == config.GCM_USERNAME
+
 
 # ==================== Server State ====================
 
 class ServerState:
-    """Manages server state including client and cache."""
+    """One GCM client per API key. stdio keeps a single client."""
 
     def __init__(self):
         self.client: Optional[GCMClient] = None
         self.auth_time: Optional[datetime] = None
+        self.clients: Dict[str, GCMClient] = {}
+        self.auth_times: Dict[str, datetime] = {}
         self.session_timeout = timedelta(hours=1)
 
     def get_client(self) -> GCMClient:
-        """Get or create GCM client."""
-        if self.client is None:
-            self.client = GCMClient()
-        return self.client
+        """Get or create the GCM client for this caller."""
+        slot = _key_slot()
+        if slot is None:
+            if self.client is None:
+                self.client = GCMClient()
+            return self.client
+        client = self.clients.get(slot)
+        if client is None:
+            client = GCMClient()
+            self.clients[slot] = client
+        return client
+
+    def drop_client(self, key_prefix: Optional[str] = None) -> None:
+        """Forget the caller's GCM session. Does not touch other keys."""
+        slot = key_prefix if key_prefix is not None else _key_slot()
+        if slot is None:
+            if self.client:
+                self.client.authenticated = False
+                self.client.session.cookies.clear()
+                self.client.user_id = None
+            self.auth_time = None
+            return
+        client = self.clients.pop(slot, None)
+        self.auth_times.pop(slot, None)
+        if client:
+            client.authenticated = False
+            client.session.cookies.clear()
+            client.user_id = None
+
+    def mark_authenticated(self) -> None:
+        slot = _key_slot()
+        now = datetime.now()
+        if slot is None:
+            self.auth_time = now
+        else:
+            self.auth_times[slot] = now
 
     def is_session_valid(self) -> bool:
-        """Check if current session is still valid."""
-        if not self.client or not self.client.authenticated:
+        """Check if this caller's session is still valid."""
+        slot = _key_slot()
+        client = self.clients.get(slot) if slot else self.client
+        if not client or not client.authenticated:
             return False
-        # Client handles token refresh internally
-        return self.client._ensure_token()
+        return client._ensure_token()
 
     def auto_auth(self) -> Tuple[bool, str]:
-        """Attempt auto-authentication using environment variables."""
+        """Log in with the service account only when this key is allowed to."""
+        meta = current_key.get()
+        if meta is not None and not _shared_service_ok(meta):
+            return False, (
+                "This API key has no GCM session. "
+                "Log in as the user named on the key."
+            )
+
         username = config.GCM_USERNAME
         password = config.GCM_PASSWORD
 
@@ -67,12 +129,20 @@ class ServerState:
 
         client = self.get_client()
         if client.login(username, password):
-            self.auth_time = datetime.now()
+            self.mark_authenticated()
             return True, f"Authenticated as {client.user_id}"
         return False, "Authentication failed"
 
 
 state = ServerState()
+
+
+def _forbidden(message: str) -> List[TextContent]:
+    return [TextContent(type="text", text=json.dumps({
+        "error": "Forbidden",
+        "status": 403,
+        "message": message,
+    }, indent=2))]
 
 
 # ==================== Tool Definitions ====================
@@ -88,8 +158,8 @@ async def list_tools() -> List[Tool]:
             name="gcm_auth",
             description="""Authenticate to IBM Guardium Cryptographic Manager (GCM).
 
-Required for all API operations. Session persists across calls.
-If GCM_USERNAME and GCM_PASSWORD env vars are set, authentication is automatic.""",
+Required for all API operations. In SSE mode the session belongs to the API key, not the process.
+Log in as the user named on that key. A key cannot use another key's login.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -226,26 +296,46 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 async def handle_auth(args: Dict[str, Any]) -> List[TextContent]:
     """Handle authentication operations."""
     action = args.get("action", "login")
+    meta = current_key.get()
 
     if action == "status":
         client = state.get_client()
-        return [TextContent(type="text", text=json.dumps({
+        body = {
             "authenticated": client.authenticated,
             "user_id": client.user_id,
             "session_valid": state.is_session_valid(),
-            "base_url": client.base_url
-        }, indent=2))]
+            "base_url": client.base_url,
+        }
+        if meta:
+            body["key_user"] = meta.get("user")
+        return [TextContent(type="text", text=json.dumps(body, indent=2))]
 
     if action == "logout":
-        if state.client:
-            state.client.authenticated = False
-            state.client.session.cookies.clear()
-            state.auth_time = None
+        state.drop_client()
         return [TextContent(type="text", text=json.dumps({"status": "logged_out"}))]
 
-    # Login
-    username = args.get("username") or config.GCM_USERNAME
-    password = args.get("password") or config.GCM_PASSWORD
+    # Login. With an API key, the username must be the user on that key.
+    username = args.get("username")
+    password = args.get("password")
+    if meta:
+        key_user = meta.get("user") or ""
+        if username and username != key_user:
+            return _forbidden(
+                f"This API key belongs to '{key_user}'. "
+                "It cannot log in as a different GCM user."
+            )
+        if not username:
+            if _shared_service_ok(meta):
+                username = config.GCM_USERNAME
+                password = password or config.GCM_PASSWORD
+            else:
+                return _forbidden(
+                    f"Log in with username '{key_user}'. "
+                    "This key does not use the shared service account."
+                )
+    else:
+        username = username or config.GCM_USERNAME
+        password = password or config.GCM_PASSWORD
 
     if not username or not password:
         return [TextContent(type="text", text=json.dumps({
@@ -266,7 +356,7 @@ async def handle_auth(args: Dict[str, Any]) -> List[TextContent]:
     sys.stdout = old_stdout
 
     if success:
-        state.auth_time = datetime.now()
+        state.mark_authenticated()
         return [TextContent(type="text", text=json.dumps({
             "status": "authenticated",
             "user_id": client.user_id,
@@ -282,10 +372,13 @@ async def handle_auth(args: Dict[str, Any]) -> List[TextContent]:
 
 async def handle_api(args: Dict[str, Any]) -> List[TextContent]:
     """Handle API operations."""
-    # Ensure authenticated
+    # Ensure this caller has its own session. Do not reuse another key's login.
     if not state.is_session_valid():
+        meta = current_key.get()
         success, msg = await asyncio.to_thread(state.auto_auth)
         if not success:
+            if meta is not None and not _shared_service_ok(meta):
+                return _forbidden(msg)
             return [TextContent(type="text", text=json.dumps({
                 "error": "Not authenticated",
                 "message": msg,

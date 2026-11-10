@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import os
 import secrets
+from uuid import UUID
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -25,6 +26,7 @@ from src.tools import (
     list_tools, call_tool,
     list_prompts, get_prompt,
     list_resources, read_resource,
+    current_key, state,
 )
 
 logger = config.get_logger("gcm-mcp")
@@ -60,12 +62,18 @@ async def _async_main_stdio():
 def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
     """Create a Starlette app with SSE transport for the MCP server."""
     sse = SseServerTransport("/messages/")
+    # session id -> key prefix that opened the SSE connection
+    session_owners: dict[UUID, str] = {}
 
-    def _check_key(request) -> bool:
-        """Validate API key from Authorization header against key store."""
+    def _key_meta(request):
+        """Return key metadata, or None when the bearer key is missing or unknown."""
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.removeprefix("Bearer ").strip()
-        return keystore.validate_key(token) is not None
+        return keystore.validate_key(token)
+
+    def _bind_scope(request, meta: dict) -> None:
+        request.scope["user"] = meta.get("user")
+        request.scope["key_prefix"] = meta.get("key_prefix")
 
     _UNAUTHORIZED = JSONResponse(
         {"error": "Unauthorized", "message": "Invalid or missing API key"},
@@ -75,20 +83,64 @@ def _create_sse_app(host: str = "0.0.0.0", port: int = 8002) -> Starlette:
     # --- MCP SSE handlers (auth checked inline — BaseHTTPMiddleware
     #     is incompatible with raw ASGI SSE streaming) ---
     async def handle_sse(request):
-        if not _check_key(request):
+        meta = _key_meta(request)
+        if not meta:
             return _UNAUTHORIZED
-        async with sse.connect_sse(
-            request.scope, request.receive, request._send
-        ) as (read_stream, write_stream):
-            await app.run(
-                read_stream,
-                write_stream,
-                app.create_initialization_options()
-            )
+        _bind_scope(request, meta)
+        before = set(sse._read_stream_writers)
+        identity = current_key.set(meta)
+        try:
+            async with sse.connect_sse(
+                request.scope, request.receive, request._send
+            ) as (read_stream, write_stream):
+                new_ids = set(sse._read_stream_writers) - before
+                for sid in new_ids:
+                    session_owners[sid] = meta["key_prefix"]
+                try:
+                    await app.run(
+                        read_stream,
+                        write_stream,
+                        app.create_initialization_options()
+                    )
+                finally:
+                    for sid in new_ids:
+                        session_owners.pop(sid, None)
+                    state.drop_client(meta["key_prefix"])
+        finally:
+            current_key.reset(identity)
 
     async def handle_messages(request):
-        if not _check_key(request):
+        meta = _key_meta(request)
+        if not meta:
             return _UNAUTHORIZED
+        _bind_scope(request, meta)
+        session_id_param = request.query_params.get("session_id")
+        if not session_id_param:
+            return JSONResponse(
+                {"error": "Bad Request", "message": "session_id is required"},
+                status_code=400,
+            )
+        try:
+            session_id = UUID(hex=session_id_param)
+        except ValueError:
+            return JSONResponse(
+                {"error": "Bad Request", "message": "Invalid session ID"},
+                status_code=400,
+            )
+        owner = session_owners.get(session_id)
+        if owner is None:
+            return JSONResponse(
+                {"error": "Not Found", "message": "Could not find session"},
+                status_code=404,
+            )
+        if not secrets.compare_digest(owner, meta["key_prefix"]):
+            return JSONResponse(
+                {
+                    "error": "Forbidden",
+                    "message": "This API key does not own the MCP session.",
+                },
+                status_code=403,
+            )
         await sse.handle_post_message(request.scope, request.receive, request._send)
 
     async def health(request):

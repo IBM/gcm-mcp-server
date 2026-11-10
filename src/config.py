@@ -60,6 +60,13 @@ GCM_REQUEST_TIMEOUT = int(os.environ.get('GCM_REQUEST_TIMEOUT', '30'))
 # Default: /data/keys.json (inside container, on persistent volume)
 GCM_MCP_KEY_STORE_PATH = os.environ.get('GCM_MCP_KEY_STORE_PATH', '/data/keys.json')
 
+# SSE/REST only. When true, a key whose user matches GCM_USERNAME may use the
+# service-account password from the environment. Default is off, so one key
+# cannot inherit another key's GCM login.
+GCM_MCP_SHARED_SERVICE_ACCOUNT = os.environ.get(
+    'GCM_MCP_SHARED_SERVICE_ACCOUNT', 'false'
+).lower() in ('1', 'true', 'yes')
+
 # ==================== Logging ====================
 
 GCM_LOG_LEVEL = os.environ.get('GCM_LOG_LEVEL', 'INFO')
